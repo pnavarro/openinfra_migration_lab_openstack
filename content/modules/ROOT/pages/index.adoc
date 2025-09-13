@@ -1,6 +1,6 @@
 = {lab_name}
 
-Welcome to the `lab_name` lab instructions.
+Welcome to the `{lab_name}` lab instructions.
 These instructions will guide you through the migration of a virtual machine from vCenter to an OpenStack environment 
 
 Within the lab environment, you will be able to copy and paste the specified commands into the CLI.
