@@ -6,7 +6,7 @@ nav:
 
 asciidoc:
   attributes:
-    lab_name: "I'm the lab_name var"
+    lab_name: "Hands-On Migration from VMware to OpenStack with Ansible and AWX"
     release-version: master
     page-pagination: true
     my_var: "foo"

@@ -1,0 +1,355 @@
+= Install, configure Ansible Automation Plaform and launch a migration 
+
+== Prerequisites
+
+From the bastion, connect to the *NFS server* host and configure the NFS share for Ansible Automation Platform:
+
+[source,bash,role=execute,subs=attributes]
+----
+ssh -i /home/lab-user/.ssh/{guid}key.pem cloud-user@nfsserver
+----
+
+Escalate to root:
+
+[source,bash,role=execute]
+----
+sudo -i
+----
+
+[source,bash,role=execute,subs=attributes]
+----
+mkdir -p /nfs/awx
+chmod 777 /nfs/awx
+cat << EOF >> /etc/exports
+/nfs/awx *(rw,sync,no_root_squash)
+EOF
+systemctl restart nfs-server
+logout
+----
+
+Back in the bastion, create the storageclass and persistent volume pointing to the just configured NFS share:
+
+In the bastion:
+
+[source,bash,role=execute,subs=attributes]
+----
+cat << EOF | oc apply -f -
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+   name: nfs
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Delete
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv1
+spec:
+  accessModes:
+  - ReadWriteOnce
+  - ReadWriteMany
+  capacity:
+    storage: 10Gi
+  nfs:
+    path: /nfs/awx
+    server: 172.18.0.13
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: nfs
+  volumeMode: Filesystem
+EOF
+----
+
+
+== Install Ansible Execution Platform
+
+In the bastion:
+
+Create the *awx* namespace:
+
+[source,bash,role=execute]
+----
+oc new-project awx
+----
+
+Create the *kustomization* file pointing to the AWX operator repository:
+
+[source,bash,role=execute]
+----
+cat << EOF > /home/lab-user/kustomization.yaml
+kind: Kustomization
+resources:
+  # Find the latest tag here: https://github.com/ansible/awx-operator/releases
+  - github.com/ansible/awx-operator/config/default?ref=2.19.1
+
+# Set the image tags to match the git version from above
+images:
+  - name: quay.io/ansible/awx-operator
+    newTag: 2.19.1
+
+# Specify a custom namespace in which to install AWX
+namespace: awx
+EOF
+----
+
+Apply the kustomization file:
+
+[source,bash,role=execute]
+----
+kubectl apply -k .
+----
+
+Then, create the AWX deployment:
+
+[source,bash,role=execute]
+----
+cat << EOF | oc apply -f -
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx-vmware-migrations
+spec:
+  service_type: clusterip
+  ingress_type: Route
+EOF
+----
+
+After a few seconds, you should see the operator begin to create new resources:
+
+[source,bash,role=execute]
+----
+kubectl get pods -l "app.kubernetes.io/managed-by=awx-operator"
+----
+
+.Sample Output
+----
+Name                                               Phase
+NAME                        READY   STATUS    RESTARTS   AGE
+awx-demo-77d96f88d5-pnhr8   4/4     Running   0          3m24s
+awx-demo-postgres-0         1/1     Running   0          3m34s
+----
+
+[source,bash,role=execute]
+----
+kubectl get svc -l "app.kubernetes.io/managed-by=awx-operator"
+----
+
+.Sample Output
+----
+NAME                TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+awx-demo-postgres   ClusterIP   None           <none>        5432/TCP       4m4s
+awx-demo-service    NodePort    10.109.40.38   <none>        80:31006/TCP   3m56s
+----
+
+Get the secret to access AWX dashboard:
+
+[source,bash,role=execute]
+----
+kubectl get secret awx-vmware-migrations-admin-password -o jsonpath="{.data.password}" -n awx | base64 --decode ; echo
+----
+
+Get the route to access AWX dashboard:
+
+[source,bash,role=execute]
+----
+oc get routes -n awx
+----
+
+.Sample Output
+----
+NAME                    HOST/PORT                                                                 PATH   SERVICES                        PORT   TERMINATION     WILDCARD
+awx-vmware-migrations   awx-vmware-migrations-awx.apps.cluster-pz52j.dynamic.redhatworkshops.io          awx-vmware-migrations-service   http   edge/Redirect   None
+----
+
+The URL of your AWX dashboard is:
+[source,bash,role=execute,subs=attributes]
+----
+awx-vmware-migrations-awx.apps.cluster-{guid}.dynamic.redhatworkshops.io
+----
+
+Navigate that URL with your browser to continue de lab.
+
+== Configuring AWX to Launch a Migration
+
+=== Creating Credentials
+
+1. From the navigation panel, go to *Resources* → *Credentials*.
+2. Click *Add* and set the following parameters:
+   * **Name:** Bastion key
+   * **Credential Type:** Machine
+   * **Username:** cloud-user
+   * **SSH Private Key:** File content from `/home/lab-user/.ssh/{guid}key.pem` on the bastion
+3. Click Save
+
+=== Creating an Inventory
+
+1. From the navigation panel, go to *Resources* → *Inventories*.
+2. Click *Add Inventory* and set the following parameters:
+   * **Name:** Conversion Host Inventory
+   * **Organization:** Default
+3. Click *Save*.
+
+=== Creating Hosts
+
+==== Conversion Host
+
+1. From the navigation panel, go to *Resources* → *Hosts*.
+2. Click *Add* and set the following parameters:
+   * **Name:** 172.21.0.206
+   * **Inventory:** Conversion Host Inventory
+   * **Variables:**
+
+[source,bash,role=execute]
+----
+ansible_ssh_user: cloud-user
+----
+
+1. From the navigation panel, go to *Resources* → *Hosts*.
+2. Click *Add* and set the following parameters:
+   * **Name:** conversion_host
+   * **Inventory:** Conversion Host Inventory
+   * **Variables:**
+
+[source,bash,role=execute]
+----
+ansible_host: 172.21.0.206
+ansible_ssh_user: cloud-user
+----
+
+Click *Save*.
+
+==== Migrator Host
+
+1. From the navigation panel, go to *Resources* → *Hosts*.
+2. Click *Add* and set the following parameters:
+   * **Name:** migrator
+   * **Inventory:** Conversion Host Inventory
+   * **Variables:**
+
+Click *Save*.
+
+[source,bash,role=execute]
+----
+ansible_connection: local
+ansible_python_interpreter: '{{ ansible_playbook_python }}'
+----
+
+Click *Save*.
+
+=== Creating an Execution Environment
+
+1. From the navigation panel, go to *Administration* → *Execution Environments*.
+2. Click *Create Execution Environment* and set the following parameters:
+   * **Name:** osm-migration-kit Execution Environment
+   * **Image:** `quay.io/repository/rhn_engineering_mbultel/osm-fedora`
+3. Click *Create Execution Environment*.
+
+=== Creating a Project
+
+1. From the navigation panel, go to *Resources* → *Projects*.
+2. Click *Create Project* and set the following parameters:
+   * **Name:** osm-migration-kit
+   * **Execution Environment:** osm-migration-kit Execution Environment
+   * **Source Control Type:** Git
+   * **Source Control URL:** `https://github.com/os-migrate/vmware-migration-kit`
+3. Click *Create Project*.
+
+=== Creating the Job Template
+
+==== Preparing the ansibles variables needed for the conversion
+
+Go back to the bastion, and run the following commands to configure OpenStack CLI access:
+
+[source,bash,role=execute]
+----
+oc project openstack
+alias openstack="oc exec -t openstackclient -- openstack"
+----
+
+Retrieve necessary OpenStack parameters:
+
+[source,bash,role=execute]
+----
+SECURITY_GROUP_ID=$(openstack security group list | awk '/ basic / {print $2}')
+PROJECT_ID=$(openstack project list | grep ' admin ' | awk '{print $2}')
+AUTH_URL=$(openstack endpoint list --service identity --interface public -c URL -f value)
+----
+
+Create the `os_migrate_for_awx.yaml` file that we will use when creating the project in the AWX dashboard:
+
+[source,bash,role=execute,subs=attributes]
+----
+cat << EOF > /home/lab-user/os-migrate-env/os_migrate_for_awx.yaml
+# osm working directory:
+runner_from_aee: true
+os_migrate_vmw_data_dir: /tmp/os-migrate
+copy_openstack_credentials_to_conv_host: false
+
+# Re-use an already deployed conversion host:
+already_deploy_conversion_host: true
+
+# If no mapped network, set the OpenStack network:
+openstack_private_network: private
+
+# Security groups for the instance:
+security_groups: ${SECURITY_GROUP_ID}
+use_existing_flavor: false
+
+# Network settings for OpenStack:
+os_migrate_create_network_port: true
+copy_metadata_to_conv_host: true
+used_mapped_networks: false
+
+os_migrate_configure_network: true
+
+vms_list:
+  - winweb01-user1
+
+# VMware parameters:
+vcenter_hostname: {vcenter_console}
+vcenter_username: {vcenter_full_user}
+vcenter_password: {vcenter_password}
+vcenter_datacenter: RS01
+
+os_cloud_environ: demo.redhat.com
+dst_cloud:
+  auth:
+    auth_url: ${AUTH_URL}
+    username: admin
+    project_id: ${PROJECT_ID}
+    project_name: admin
+    user_domain_name: Default
+    password: openstack
+  region_name: regionOne
+  interface: public
+  insecure: true
+  identity_api_version: 3
+EOF
+----
+
+==== Configuring the Job Template
+
+Go back to the AWX dashboard.
+
+1. From the navigation panel, go to *Resources* → *Templates*.
+2. Click *Add Job Template* and set the following parameters:
+   * **Name:** Windows VM Migration
+   * **Inventory:** Conversion Host Inventory
+   * **Project:** osm-migration-kit
+   * **Playbook:** `vmware_migration_kit/playbooks/migration.yml`
+   * **Execution Environment:** osm-migration-kit Execution Environment
+   * **Credentials:** Bastion key
+   * **Extra Variables:** Copy the content of `/home/lab-user/os-migrate-env/os_migrate_for_awx.yaml` from the bastion
+3. Click *Save*.
+
+=== Running the Migration
+
+1. From the navigation panel, go to *Resources* → *Templates*.
+2. Locate the *Windows VM Migration* template.
+3. Click the *rocket icon* to launch the migration.
+
+== Access to the VM using Horizon
+
+1. Access to Horizon using the URL: https://horizon-openstack.apps.{guid}.dynamic.redhatworkshops.io
+2. In the top panel, Instances, click on the instance: winweb01-user1
+3. Click the tab Console to access to the console.

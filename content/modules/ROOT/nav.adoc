@@ -1,7 +1,4 @@
-* xref:module-01.adoc[1. RPM Native Container]
-** xref:module-01.adoc#repositories[Repositories]
-** xref:module-01.adoc#software[Software]
-
-* xref:module-02.adoc[2. GitHub Sourced Container]
-** xref:module-02.adoc#prerequisites[Install Prerequisites]
-** xref:module-02.adoc#container[Enable Container]
+* xref:migration/migration.adoc[Vmware to OpenStack using the os-migrate vmware migration kit]
+** xref:migration/prereqs-migration.adoc[Perform Prerequisite Operations]
+** xref:migration/install-os-migrate.adoc[Install the os-migrate vmware migration kit collection and execute a VM migration from CLI]
+** xref:migration/install-awx-configure-os-migrate.adoc[Install AWX and configure a job to execute a VM migration]
