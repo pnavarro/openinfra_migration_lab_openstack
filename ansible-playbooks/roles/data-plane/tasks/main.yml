@@ -42,6 +42,14 @@
   register: eth0_stable_result
   changed_when: true
 
+- name: Read SSH key files from remote host
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  register: ssh_key_files
+  loop:
+    - "{{ ansible_env.HOME }}/.ssh/{{ guid }}key.pub"
+    - "{{ ansible_env.HOME }}/.ssh/{{ guid }}key.pem"
+
 - name: Create dataplane ansible SSH key secret
   kubernetes.core.k8s:
     state: present
@@ -53,9 +61,9 @@
         namespace: "{{ openstack_namespace }}"
       type: Opaque
       data:
-        authorized_keys: "{{ lookup('file', ansible_env.HOME + '/.ssh/' + guid + 'key.pub') | b64encode }}"
-        ssh-privatekey: "{{ lookup('file', ansible_env.HOME + '/.ssh/' + guid + 'key.pem') | b64encode }}"
-        ssh-publickey: "{{ lookup('file', ansible_env.HOME + '/.ssh/' + guid + 'key.pub') | b64encode }}"
+        authorized_keys: "{{ ssh_key_files.results[0].content }}"
+        ssh-privatekey: "{{ ssh_key_files.results[1].content }}"
+        ssh-publickey: "{{ ssh_key_files.results[0].content }}"
 
 - name: Generate nova migration SSH key pair
   community.crypto.openssh_keypair:
@@ -63,6 +71,14 @@
     type: ecdsa
     size: 521
     force: false
+
+- name: Read nova migration SSH key files from remote host
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  register: nova_migration_key_files
+  loop:
+    - "{{ ansible_env.HOME }}/nova-migration-key"
+    - "{{ ansible_env.HOME }}/nova-migration-key.pub"
 
 - name: Create nova migration SSH key secret
   kubernetes.core.k8s:
@@ -75,8 +91,8 @@
         namespace: "{{ openstack_namespace }}"
       type: Opaque
       data:
-        ssh-privatekey: "{{ lookup('file', ansible_env.HOME + '/nova-migration-key') | b64encode }}"
-        ssh-publickey: "{{ lookup('file', ansible_env.HOME + '/nova-migration-key.pub') | b64encode }}"
+        ssh-privatekey: "{{ nova_migration_key_files.results[0].content }}"
+        ssh-publickey: "{{ nova_migration_key_files.results[1].content }}"
 
 - name: Create subscription manager secret
   kubernetes.core.k8s:

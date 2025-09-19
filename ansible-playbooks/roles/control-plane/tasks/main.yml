@@ -1,6 +1,11 @@
 ---
 # Control Plane Creation role - Based on create-cp.adoc documentation
 
+- name: Read Cinder NFS configuration file from remote host
+  ansible.builtin.slurp:
+    src: "{{ ansible_env.HOME }}/{{ files_directory }}/nfs-cinder-conf"
+  register: nfs_cinder_conf_content
+
 - name: Create Cinder NFS configuration secret
   kubernetes.core.k8s:
     state: present
@@ -12,7 +17,7 @@
         namespace: "{{ openstack_namespace }}"
       type: Opaque
       data:
-        nfs-cinder-conf: "{{ lookup('file', ansible_env.HOME + '/' + files_directory + '/nfs-cinder-conf') | b64encode }}"
+        nfs-cinder-conf: "{{ nfs_cinder_conf_content.content }}"
 
 - name: Wait for OpenStack Control Plane CRD to be available
   kubernetes.core.k8s_info:

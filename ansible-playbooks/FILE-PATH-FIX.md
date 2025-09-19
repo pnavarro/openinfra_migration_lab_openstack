@@ -83,9 +83,42 @@ files_directory: "openstack-files"
 - `roles/install-operators/tasks/main.yml` - Replaced git clone with local file copy
 - All other roles continue to work with the same `files_directory` variable
 
+## Additional Fix: File Lookup vs Slurp Module
+
+### Problem
+Even after fixing the file paths, some tasks were still failing because the `file` lookup plugin reads files from the Ansible **controller** (your workstation), not from the **target host** (bastion).
+
+### Files Using `file` Lookup (Problematic)
+```yaml
+# This runs on the controller, not the target
+data:
+  nfs-cinder-conf: "{{ lookup('file', '/path/on/target') | b64encode }}"
+```
+
+### Solution: Use `slurp` Module
+```yaml
+# This reads files from the target host
+- name: Read file from remote host
+  ansible.builtin.slurp:
+    src: "{{ ansible_env.HOME }}/{{ files_directory }}/nfs-cinder-conf"
+  register: file_content
+
+- name: Use file content (already base64 encoded)
+  kubernetes.core.k8s:
+    definition:
+      data:
+        nfs-cinder-conf: "{{ file_content.content }}"
+```
+
+### Fixed Files
+1. **`roles/control-plane/tasks/main.yml`** - NFS Cinder configuration
+2. **`roles/data-plane/tasks/main.yml`** - SSH key secrets for dataplane and nova migration
+
 ## Verification
 
 The fix ensures that:
 - Files are copied from the local `content/files/` directory
 - Working directory is created in the user's home (`~/openstack-files/`)
+- All file content is read from the remote host using `slurp` module
+- Content is properly base64 encoded for Kubernetes secrets
 - All subsequent tasks can access files using the same `{{ ansible_env.HOME }}/{{ files_directory }}/filename` pattern
