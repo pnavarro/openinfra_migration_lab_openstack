@@ -1,6 +1,8 @@
 # Troubleshooting Kubernetes Module Issues
 
-## Problem
+## Common Problems
+
+### Problem 1: Missing Kubernetes Python Library
 
 You might encounter an error like this when running the prerequisites role:
 
@@ -11,9 +13,25 @@ fatal: [bastion-jumphost]: FAILED! => changed=false
   Please read the module documentation and install it in the appropriate location.
 ```
 
-## Root Cause
+### Problem 2: NMState CRD Not Available
 
-This error occurs when the Python `kubernetes` library is not installed on the bastion host, which is required for Ansible's `kubernetes.core` modules to work.
+You might see this error when creating NMState instances:
+
+```
+TASK [prerequisites : Create NMState instance] ****************************
+fatal: [bastion-jumphost]: FAILED! => changed=false
+  msg: Failed to find exact match for nmstate.io/v1.NMState by [kind, name, singularName, shortNames]
+```
+
+This happens when the NMState operator hasn't fully deployed its Custom Resource Definitions (CRDs) yet.
+
+## Root Causes
+
+### Problem 1 Root Cause
+The Python `kubernetes` library is not installed on the bastion host, which is required for Ansible's `kubernetes.core` modules to work.
+
+### Problem 2 Root Cause
+The NMState operator takes time to install its Custom Resource Definitions (CRDs). Attempting to create NMState instances before the CRDs are available will fail.
 
 ## Solutions Implemented
 
@@ -33,7 +51,17 @@ The prerequisites role now attempts to install the required libraries:
 
 If the Python libraries cannot be installed or don't work, the playbooks automatically fall back to using native `oc` commands instead of Ansible's kubernetes modules.
 
-### 3. Dual Approach Architecture
+### 3. CRD Availability Checks
+
+Both approaches now wait for Custom Resource Definitions to be available before creating instances:
+
+```yaml
+- name: Wait for NMState CRD to be available
+- name: Create NMState instance (with retries)
+- name: Verify NMState instance is created
+```
+
+### 4. Dual Approach Architecture
 
 The prerequisites role now uses two separate task files:
 - `k8s-modules.yml` - Uses Ansible kubernetes modules (preferred)

@@ -120,15 +120,32 @@
     - redhat_registry_username != ""
     - redhat_registry_password != ""
 
+- name: Wait for OpenStack DataPlane CRDs to be available
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: "{{ item }}"
+  register: dataplane_crd
+  until: dataplane_crd.resources | length > 0
+  retries: 30
+  delay: 10
+  loop:
+    - openstackdataplanenodesets.dataplane.openstack.org
+    - openstackdataplanedeployments.dataplane.openstack.org
+
 - name: Apply data plane node set deployment
   kubernetes.core.k8s:
     state: present
     src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-dataplane-node-set-deploy.yaml"
+  retries: 5
+  delay: 10
 
 - name: Apply data plane deployment
   kubernetes.core.k8s:
     state: present
     src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-dataplane-deployment.yaml"
+  retries: 5
+  delay: 10
 
 - name: Wait for data plane deployment to complete
   kubernetes.core.k8s_info:

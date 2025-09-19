@@ -41,15 +41,32 @@
     state: present
     src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-netattach.yaml"
 
+- name: Wait for MetalLB additional CRDs to be available
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: "{{ item }}"
+  register: metallb_additional_crd
+  until: metallb_additional_crd.resources | length > 0
+  retries: 30
+  delay: 10
+  loop:
+    - ipaddresspools.metallb.io
+    - l2advertisements.metallb.io
+
 - name: Apply MetalLB IP address pools
   kubernetes.core.k8s:
     state: present
     src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-metal-lb-ip-address-pools.yaml"
+  retries: 5
+  delay: 10
 
 - name: Apply MetalLB L2 advertisements
   kubernetes.core.k8s:
     state: present
     src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-metal-lb-l2-advertisements.yaml"
+  retries: 5
+  delay: 10
 
 - name: Enable global IP forwarding for OVN
   kubernetes.core.k8s:

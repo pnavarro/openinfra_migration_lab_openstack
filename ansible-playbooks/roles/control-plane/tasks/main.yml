@@ -14,10 +14,22 @@
       data:
         nfs-cinder-conf: "{{ lookup('file', ansible_env.HOME + '/' + files_directory + '/nfs-cinder-conf') | b64encode }}"
 
+- name: Wait for OpenStack Control Plane CRD to be available
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: openstackcontrolplanes.core.openstack.org
+  register: openstack_cp_crd
+  until: openstack_cp_crd.resources | length > 0
+  retries: 30
+  delay: 10
+
 - name: Create OpenStack Control Plane
   kubernetes.core.k8s:
     state: present
     src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-ctlplane-deploy.yaml"
+  retries: 5
+  delay: 10
 
 - name: Wait for OpenStack Control Plane to be ready
   kubernetes.core.k8s_info:

@@ -71,6 +71,16 @@
   retries: 60
   delay: 10
 
+- name: Wait for NMState CRD to be available
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: nmstates.nmstate.io
+  register: nmstate_crd
+  until: nmstate_crd.resources | length > 0
+  retries: 30
+  delay: 10
+
 - name: Create NMState instance
   kubernetes.core.k8s:
     state: present
@@ -79,6 +89,18 @@
       kind: NMState
       metadata:
         name: nmstate
+  retries: 5
+  delay: 10
+
+- name: Verify NMState instance is created
+  kubernetes.core.k8s_info:
+    api_version: nmstate.io/v1
+    kind: NMState
+    name: nmstate
+  register: nmstate_instance
+  until: nmstate_instance.resources | length > 0
+  retries: 10
+  delay: 5
 
 - name: Create MetalLB operator namespace
   kubernetes.core.k8s:
@@ -134,6 +156,16 @@
   retries: 60
   delay: 10
 
+- name: Wait for MetalLB CRD to be available
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: metallbs.metallb.io
+  register: metallb_crd
+  until: metallb_crd.resources | length > 0
+  retries: 30
+  delay: 10
+
 - name: Create MetalLB instance
   kubernetes.core.k8s:
     state: present
@@ -146,6 +178,19 @@
       spec:
         nodeSelector:
           node-role.kubernetes.io/worker: ""
+  retries: 5
+  delay: 10
+
+- name: Verify MetalLB instance is created
+  kubernetes.core.k8s_info:
+    api_version: metallb.io/v1beta1
+    kind: MetalLB
+    name: metallb
+    namespace: metallb-system
+  register: metallb_instance
+  until: metallb_instance.resources | length > 0
+  retries: 10
+  delay: 5
 
 - name: Wait for MetalLB controller deployment to be ready
   kubernetes.core.k8s_info:
