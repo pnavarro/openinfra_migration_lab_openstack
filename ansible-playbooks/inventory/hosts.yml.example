@@ -1,0 +1,66 @@
+---
+# Example inventory configuration for RHOSO deployment via SSH jump host
+# Copy this to hosts.yml and update with your actual values
+
+all:
+  vars:
+    # REQUIRED: Lab Environment Configuration
+    lab_guid: "a1b2c"                                 # Replace with your actual lab GUID
+    bastion_user: "lab-user"                          # Usually 'lab-user'
+    bastion_hostname: "ssh.ocpvdev01.rhdp.net"       # Replace with your bastion hostname
+    bastion_port: "31295"                            # Replace with your SSH port
+    bastion_password: "YourBastionPassword123"        # Replace with your actual password
+    
+    # REQUIRED: OpenShift Console (if you have access)
+    ocp_console_url: "https://console-openshift-console.apps.cluster-xyz.xyz.example.opentlc.com"
+    ocp_admin_password: "YourOCPAdminPassword"
+    
+    # REQUIRED: Red Hat Registry Service Account Credentials
+    # Get these from: https://access.redhat.com/articles/RegistryAuthentication#creating-registry-service-accounts-6
+    registry_username: "12345678|myserviceaccount"    # Your registry service account
+    registry_password: "eyJhbGciOiJSUzUxMiJ9..."      # Your registry token
+    
+    # REQUIRED: Red Hat Customer Portal Credentials  
+    # Your login credentials for https://access.redhat.com
+    rhc_username: "your-rh-username@email.com"       # Your RH Customer Portal username
+    rhc_password: "YourRHPassword123"                 # Your RH Customer Portal password
+    
+    # OPTIONAL: Internal lab hostnames (usually defaults work)
+    nfs_server_hostname: "nfsserver"                  # Internal NFS server hostname
+    compute_hostname: "compute01"                     # Internal compute node hostname
+    
+    # OPTIONAL: External IP configuration for OpenShift worker nodes
+    # These IPs are used to configure the external network interfaces on OCP worker nodes
+    rhoso_external_ip_worker_1: "172.21.0.21"        # External IP for worker node 1
+    rhoso_external_ip_worker_2: "172.21.0.22"        # External IP for worker node 2
+    rhoso_external_ip_worker_3: "172.21.0.23"        # External IP for worker node 3
+    
+    # OPTIONAL: Network configuration (usually defaults work)
+    rhoso_external_ip_bastion: "172.21.0.50"         # External IP for bastion
+
+# All operations run on the bastion host
+bastion:
+  hosts:
+    bastion-jumphost:
+      ansible_host: "{{ bastion_hostname }}"
+      ansible_user: "{{ bastion_user }}"
+      ansible_port: "{{ bastion_port }}"
+      ansible_ssh_pass: "{{ bastion_password }}"
+
+# NFS server operations delegated from bastion
+nfsserver:
+  hosts:
+    nfs-server:
+      ansible_host: "{{ nfs_server_hostname }}"
+      ansible_user: "cloud-user"
+      ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
+      delegate_to: bastion-jumphost
+
+# Compute node operations delegated from bastion  
+compute_nodes:
+  hosts:
+    compute01:
+      ansible_host: "{{ compute_hostname }}"
+      ansible_user: "cloud-user"
+      ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
+      delegate_to: bastion-jumphost

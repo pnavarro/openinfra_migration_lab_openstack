@@ -1,0 +1,70 @@
+---
+# NFS Server Configuration role - Based on install-nfs-server.adoc documentation
+# This role connects to the NFS server from the bastion via SSH
+
+- name: Connect to NFS server and configure storage
+  delegate_to: "{{ nfs_server_hostname }}"
+  become: true
+  vars:
+    ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ guid }}key.pem"
+    ansible_user: "cloud-user"
+  block:
+    - name: Create NFS directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0777'
+        owner: root
+        group: root
+      loop:
+        - "{{ nfs_cinder_path }}"
+        - "{{ nfs_glance_path }}"
+
+    - name: Configure NFS exports
+      ansible.builtin.copy:
+        dest: /etc/exports
+        content: |
+          {{ nfs_cinder_path }} *(rw,sync,no_root_squash)
+          {{ nfs_glance_path }} *(rw,sync,no_root_squash)
+        backup: true
+      notify: restart nfs-server
+
+    - name: Delete default wired connection
+      community.general.nmcli:
+        conn_name: "Wired connection 1"
+        state: absent
+      ignore_errors: true
+
+    - name: Configure static network interface for storage network
+      community.general.nmcli:
+        conn_name: "static-eth1"
+        ifname: eth1
+        type: ethernet
+        ip4: "{{ nfs_server_ip }}/24"
+        state: present
+
+    - name: Activate the static network connection
+      community.general.nmcli:
+        conn_name: "static-eth1"
+        state: up
+
+    - name: Start and enable NFS server
+      ansible.builtin.systemd_service:
+        name: nfs-server
+        state: started
+        enabled: true
+
+    - name: Export NFS shares
+      ansible.builtin.command:
+        cmd: exportfs -ra
+      changed_when: true
+
+    - name: Verify NFS exports
+      ansible.builtin.command:
+        cmd: exportfs -v
+      register: nfs_exports
+      changed_when: false
+
+    - name: Display NFS exports
+      debug:
+        var: nfs_exports.stdout_lines

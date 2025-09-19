@@ -14,7 +14,7 @@ mkdir -p /home/lab-user/os-migrate-env
 
 Then,create the ansible inventory:
 
-[source,bash,role=execute]
+[source,bash,role=execute,subs=attributes]
 ----
 cat << EOF > /home/lab-user/os-migrate-env/inventory.yaml
 migrator:
@@ -25,7 +25,7 @@ migrator:
 
 conversion_host:
   hosts:
-    172.21.0.206:
+    {rhoso_conversion_host_ip}:
       ansible_ssh_user: cloud-user
       ansible_ssh_private_key_file: /runner/key
       ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
@@ -51,7 +51,7 @@ SECURITY_GROUP_ID=$(openstack security group list | awk '/ basic / {print $2}')
 
 Create the os_migrate_vars.yamls file:
 
-[source,bash,role=execute,,subs=attributes]
+[source,bash,role=execute,subs=attributes]
 ----
 cat << EOF > /home/lab-user/os-migrate-env/os_migrate_vars.yaml
 runner_from_aee: false
@@ -142,13 +142,13 @@ openstack server list
 
 . Sample Output
 
-[source,bash]
+[source,bash,subs=attributes]
 ----
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 | ID                                   | Name          | Status | Networks                                | Image                    | Flavor                   |
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 | 77844fc9-1c83-4328-8995-3c9a008e8134 | haproxy-user1 | ACTIVE | private=192.168.100.237, 172.21.0.207 | N/A (booted from volume) | osm-vmware-haproxy-tztc2 |
-| 7fa1709c-4b6e-4adf-8098-f57a0ee43abd | centos10-ch    | ACTIVE | private=192.168.100.196, 172.21.0.206 | centos9-image            | migrate                  |
+| 7fa1709c-4b6e-4adf-8098-f57a0ee43abd | centos10-ch    | ACTIVE | private=192.168.100.196, {rhoso_conversion_host_ip} | centos9-image            | migrate                  |
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 ----
 

@@ -1,0 +1,63 @@
+= Access OpenStack
+
+From the *bastion server* access the openstackclient pod:
+
+[source,bash,role=execute]
+----
+oc rsh -n openstack openstackclient
+----
+
+On Control Plane verify OpenStack Services:
+
+[source,bash,role=execute]
+----
+openstack compute service list
+----
+
+.Sample Output
+----
++--------------------------------------+----------------+-------------------------------------------------------------+----------+---------+-------+----------------------------+
+| ID                                   | Binary         | Host                                                        | Zone     | Status  | State | Updated At                 |
++--------------------------------------+----------------+-------------------------------------------------------------+----------+---------+-------+----------------------------+
+| 94ce5d73-9cd6-4ad0-83bb-0f731a9418f6 | nova-conductor | nova-cell0-conductor-0                                      | internal | enabled | up    | 2025-01-27T09:56:26.000000 |
+| 801cb7ff-4b55-4535-8dab-f0a1cc12bb89 | nova-scheduler | nova-scheduler-0                                            | internal | enabled | up    | 2025-01-27T09:56:25.000000 |
+| d8ba1138-06c6-4b8d-a7d8-4c123ccaa2bf | nova-conductor | nova-cell1-conductor-0                                      | internal | enabled | up    | 2025-01-27T09:56:25.000000 |
+| f81bcf7c-7e7b-4f5a-8ee0-fdb7139baf09 | nova-compute   | edpm-compute-1.sandbox-nqfkf-ocp4-cluster.svc.cluster.local | nova     | enabled | up    | 2025-01-27T09:56:16.000000 |
++--------------------------------------+----------------+-------------------------------------------------------------+----------+---------+-------+----------------------------+
+----
+
+Verify OpenStack networks:
+
+[source,bash,role=execute]
+----
+openstack network agent list
+exit
+----
+
+.Sample Output
+----
++--------------------------------------+------------------------------+-------------------------------------------------------------+-------------------+-------+-------+----------------------------+
+| ID                                   | Agent Type                   | Host                                                        | Availability Zone | Alive | State | Binary                     |
++--------------------------------------+------------------------------+-------------------------------------------------------------+-------------------+-------+-------+----------------------------+
+| 69b4e349-8395-4259-83a2-976297b3dbf6 | OVN Controller Gateway agent | control-plane-cluster-nqfkf-2                               |                   | :-)   | UP    | ovn-controller             |
+| 002c628a-a22e-4a43-b353-e35cb35c6178 | OVN Controller Gateway agent | control-plane-cluster-nqfkf-1                               |                   | :-)   | UP    | ovn-controller             |
+| 54fab519-0539-4d7a-aa17-c37d5dbee853 | OVN Controller Gateway agent | control-plane-cluster-nqfkf-3                               |                   | :-)   | UP    | ovn-controller             |
+| 1c2d20aa-a2cb-47ca-bda3-29e3f8dee8a3 | OVN Controller agent         | edpm-compute-1.sandbox-nqfkf-ocp4-cluster.svc.cluster.local |                   | :-)   | UP    | ovn-controller             |
+| 7b027585-2587-5e20-b912-58cd97fd5763 | OVN Metadata agent           | edpm-compute-1.sandbox-nqfkf-ocp4-cluster.svc.cluster.local |                   | :-)   | UP    | neutron-ovn-metadata-agent |
++--------------------------------------+------------------------------+-------------------------------------------------------------+-------------------+-------+-------+----------------------------+
+----
+
+Map the Compute nodes to the Compute cell that they are connected to:
+
+[source,bash,role=execute]
+----
+oc rsh nova-cell0-conductor-0 nova-manage cell_v2 discover_hosts --verbose
+----
+
+Configure the bastion with external network
+
+[source,bash,role=execute,subs=attributes]
+----
+sudo nmcli con add con-name "static-eth1" ifname eth1 type ethernet ip4 {rhoso_external_ip_bastion}/24
+sudo nmcli con up "static-eth1"
+----

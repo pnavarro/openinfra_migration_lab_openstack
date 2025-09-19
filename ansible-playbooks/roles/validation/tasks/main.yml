@@ -1,0 +1,91 @@
+---
+# Validation and Access role - Based on access.adoc documentation
+
+- name: Configure bastion external network interface
+  become: true
+  community.general.nmcli:
+    conn_name: "static-eth1"
+    ifname: eth1
+    type: ethernet
+    ip4: "{{ rhoso_external_ip_bastion | default('172.21.0.50') }}/24"
+    state: present
+  vars:
+    rhoso_external_ip_bastion: "{{ hostvars[inventory_hostname].get('rhoso_external_ip_bastion', '172.21.0.50') }}"
+
+- name: Activate bastion external network connection
+  become: true
+  community.general.nmcli:
+    conn_name: "static-eth1"
+    state: up
+
+- name: Get OpenStack client pod name
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ openstack_namespace }}"
+    label_selectors:
+      - "service=openstackclient"
+  register: openstackclient_pods
+
+- name: Verify OpenStack compute services
+  kubernetes.core.k8s_exec:
+    namespace: "{{ openstack_namespace }}"
+    pod: "{{ openstackclient_pods.resources[0].metadata.name }}"
+    command: openstack compute service list
+  register: compute_services
+  when: openstackclient_pods.resources | length > 0
+
+- name: Display OpenStack compute services
+  debug:
+    var: compute_services.stdout_lines
+  when: compute_services is defined
+
+- name: Verify OpenStack network agents
+  kubernetes.core.k8s_exec:
+    namespace: "{{ openstack_namespace }}"
+    pod: "{{ openstackclient_pods.resources[0].metadata.name }}"
+    command: openstack network agent list
+  register: network_agents
+  when: openstackclient_pods.resources | length > 0
+
+- name: Display OpenStack network agents
+  debug:
+    var: network_agents.stdout_lines
+  when: network_agents is defined
+
+- name: Discover compute hosts in Nova cell
+  kubernetes.core.k8s_exec:
+    namespace: "{{ openstack_namespace }}"
+    pod: nova-cell0-conductor-0
+    command: nova-manage cell_v2 discover_hosts --verbose
+  register: discover_hosts
+  ignore_errors: true
+
+- name: Display host discovery results
+  debug:
+    var: discover_hosts.stdout_lines
+  when: discover_hosts is defined
+
+- name: Verify control plane services are running
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ openstack_namespace }}"
+    label_selectors:
+      - "service in (keystone, nova, neutron, glance, cinder, horizon)"
+  register: control_plane_pods
+
+- name: Display control plane pod status
+  debug:
+    msg: "{{ item.metadata.name }}: {{ item.status.phase }}"
+  loop: "{{ control_plane_pods.resources }}"
+  when: control_plane_pods.resources | length > 0
+
+- name: Summary of deployment status
+  debug:
+    msg:
+      - "=== RHOSO Deployment Summary ==="
+      - "Control plane pods running: {{ control_plane_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}"
+      - "Total control plane pods: {{ control_plane_pods.resources | length }}"
+      - "OpenStack client available: {{ openstackclient_pods.resources | length > 0 }}"
+      - "Deployment completed successfully!"

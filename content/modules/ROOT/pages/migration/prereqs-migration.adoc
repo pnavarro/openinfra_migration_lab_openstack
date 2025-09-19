@@ -33,13 +33,13 @@ oc rsh -n openstack openstackclient
 
 Create networks and security groups if you didn't create it when installing RHOSO 18
 
-[source,bash,role=execute]
+[source,bash,role=execute,subs=attributes]
 ----
 export GATEWAY=172.21.0.1
-export PUBLIC_NETWORK_CIDR=172.21.0.1/24
+export PUBLIC_NETWORK_CIDR={rhoso_ipam_network}
 export PRIVATE_NETWORK_CIDR=192.168.100.0/24
-export PUBLIC_NET_START=172.21.0.200
-export PUBLIC_NET_END=172.21.0.210
+export PUBLIC_NET_START={rhoso_public_net_start}
+export PUBLIC_NET_END={rhoso_public_net_end}
 export DNS_SERVER=8.8.8.8
 openstack security group create basic
 openstack security group rule create basic --protocol tcp --dst-port 22:22 --remote-ip 0.0.0.0/0
@@ -73,19 +73,19 @@ openstack image create centos10-image --container-format bare --disk-format qcow
 
 Create the Server and a Floating IP
 
-[source,bash,role=execute]
+[source,bash,role=execute,subs=attributes]
 ----
 openstack server create \
     --flavor migrate --key-name bastion_key --network private --security-group basic \
     --image centos10-image centos10-ch
-openstack floating ip create public --floating-ip-addres 172.21.0.206
+openstack floating ip create public --floating-ip-addres {rhoso_conversion_host_ip}
 ----
 
 Add the floating IP above to the new VM in the next step.
 
-[source,bash,role=execute]
+[source,bash,role=execute,subs=attributes]
 ----
-openstack server add floating ip centos10-ch 172.21.0.206
+openstack server add floating ip centos10-ch {rhoso_conversion_host_ip}
 exit
 ----
 
@@ -93,7 +93,7 @@ From the bastion access to the VM.
 
 [source,bash,role=execute,subs=attributes]
 ----
-ssh -i /home/lab-user/.ssh/{guid}key.pub cloud-user@172.21.0.206
+ssh -i /home/lab-user/.ssh/{guid}key.pub cloud-user@{rhoso_conversion_host_ip}
 ----
 
 Install the Vmware VIX rpm.

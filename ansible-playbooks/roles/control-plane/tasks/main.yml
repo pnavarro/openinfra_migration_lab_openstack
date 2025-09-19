@@ -1,0 +1,46 @@
+---
+# Control Plane Creation role - Based on create-cp.adoc documentation
+
+- name: Create Cinder NFS configuration secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: cinder-nfs-config
+        namespace: "{{ openstack_namespace }}"
+      type: Opaque
+      data:
+        nfs-cinder-conf: "{{ lookup('file', ansible_env.HOME + '/' + files_directory + '/nfs-cinder-conf') | b64encode }}"
+
+- name: Create OpenStack Control Plane
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-ctlplane-deploy.yaml"
+
+- name: Wait for OpenStack Control Plane to be ready
+  kubernetes.core.k8s_info:
+    api_version: core.openstack.org/v1beta1
+    kind: OpenStackControlPlane
+    name: openstack-control-plane
+    namespace: "{{ openstack_namespace }}"
+  register: control_plane_status
+  until: >
+    control_plane_status.resources | length > 0 and
+    control_plane_status.resources[0].status is defined and
+    control_plane_status.resources[0].status.conditions is defined and
+    control_plane_status.resources[0].status.conditions | 
+    selectattr('type', 'equalto', 'Ready') |
+    selectattr('status', 'equalto', 'True') |
+    list | length > 0
+  retries: 180  # 30 minutes timeout
+  delay: 10
+
+- name: Display Control Plane status
+  debug:
+    msg: "OpenStack Control Plane status: {{ control_plane_status.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='message') | first | default('Unknown') }}"
+  when: 
+    - control_plane_status.resources | length > 0
+    - control_plane_status.resources[0].status is defined
+    - control_plane_status.resources[0].status.conditions is defined

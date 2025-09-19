@@ -1,0 +1,171 @@
+---
+# Data Plane Configuration role - Based on create-dp.adoc documentation
+
+- name: Apply data plane network configuration
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-dataplane-netconfig.yaml"
+
+- name: Configure compute node hostname and networking (via SSH from bastion)
+  delegate_to: "{{ compute_hostname }}"
+  become: true
+  vars:
+    ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ guid }}key.pem"
+    ansible_user: "cloud-user"
+  block:
+    - name: Set hostname for compute node
+      ansible.builtin.hostname:
+        name: "{{ compute_nodes[0].hostname }}"
+
+    - name: Configure static eth1 interface for control plane
+      community.general.nmcli:
+        conn_name: "static-eth1"
+        ifname: eth1
+        type: ethernet
+        ip4: "{{ compute_nodes[0].ctlplane_ip }}/24"
+        dns4:
+          - "172.22.0.89"
+        state: present
+
+    - name: Activate static-eth1 connection
+      community.general.nmcli:
+        conn_name: "static-eth1"
+        state: up
+
+    - name: Configure eth0 DHCP connection
+      community.general.nmcli:
+        conn_name: "eth0-dhcp"
+        ifname: eth0
+        type: ethernet
+        method4: auto
+        method6: ignore
+        state: present
+
+    - name: Activate eth0-dhcp connection
+      community.general.nmcli:
+        conn_name: "eth0-dhcp"
+        state: up
+
+    - name: Set stable ID for eth0 connection
+      community.general.nmcli:
+        conn_name: "eth0-dhcp"
+        stable_id: "user-set"
+        state: present
+
+- name: Create dataplane ansible SSH key secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: dataplane-ansible-ssh-private-key-secret
+        namespace: "{{ openstack_namespace }}"
+      type: Opaque
+      data:
+        authorized_keys: "{{ lookup('file', ansible_env.HOME + '/.ssh/' + guid + 'key.pub') | b64encode }}"
+        ssh-privatekey: "{{ lookup('file', ansible_env.HOME + '/.ssh/' + guid + 'key.pem') | b64encode }}"
+        ssh-publickey: "{{ lookup('file', ansible_env.HOME + '/.ssh/' + guid + 'key.pub') | b64encode }}"
+
+- name: Generate nova migration SSH key pair
+  community.crypto.openssh_keypair:
+    path: "{{ ansible_env.HOME }}/nova-migration-key"
+    type: ecdsa
+    size: 521
+    force: false
+
+- name: Create nova migration SSH key secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: nova-migration-ssh-key
+        namespace: "{{ openstack_namespace }}"
+      type: Opaque
+      data:
+        ssh-privatekey: "{{ lookup('file', ansible_env.HOME + '/nova-migration-key') | b64encode }}"
+        ssh-publickey: "{{ lookup('file', ansible_env.HOME + '/nova-migration-key.pub') | b64encode }}"
+
+- name: Create subscription manager secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: subscription-manager
+        namespace: "{{ openstack_namespace }}"
+      type: Opaque
+      stringData:
+        rhc_auth: '{"login": {"username": "{{ subscription_manager_username }}", "password": "{{ subscription_manager_password }}"}}'
+  when: 
+    - subscription_manager_username != ""
+    - subscription_manager_password != ""
+
+- name: Create Red Hat registry secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: redhat-registry
+        namespace: "{{ openstack_namespace }}"
+      type: Opaque
+      stringData:
+        edpm_container_registry_logins: '{"registry.redhat.io": {"{{ redhat_registry_username }}": "{{ redhat_registry_password }}"}}'
+  when:
+    - redhat_registry_username != ""
+    - redhat_registry_password != ""
+
+- name: Apply data plane node set deployment
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-dataplane-node-set-deploy.yaml"
+
+- name: Apply data plane deployment
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-dataplane-deployment.yaml"
+
+- name: Wait for data plane deployment to complete
+  kubernetes.core.k8s_info:
+    api_version: dataplane.openstack.org/v1beta1
+    kind: OpenStackDataPlaneDeployment
+    namespace: "{{ openstack_namespace }}"
+  register: dataplane_deployment
+  until: >
+    dataplane_deployment.resources | length > 0 and
+    dataplane_deployment.resources[0].status is defined and
+    dataplane_deployment.resources[0].status.conditions is defined and
+    dataplane_deployment.resources[0].status.conditions |
+    selectattr('type', 'equalto', 'Ready') |
+    selectattr('status', 'equalto', 'True') |
+    list | length > 0
+  retries: 180  # 30 minutes timeout
+  delay: 10
+
+- name: Wait for data plane node set to be ready
+  kubernetes.core.k8s_info:
+    api_version: dataplane.openstack.org/v1beta1
+    kind: OpenStackDataPlaneNodeSet
+    namespace: "{{ openstack_namespace }}"
+  register: dataplane_nodeset
+  until: >
+    dataplane_nodeset.resources | length > 0 and
+    dataplane_nodeset.resources[0].status is defined and
+    dataplane_nodeset.resources[0].status.conditions is defined and
+    dataplane_nodeset.resources[0].status.conditions |
+    selectattr('type', 'equalto', 'Ready') |
+    selectattr('status', 'equalto', 'True') |
+    list | length > 0
+  retries: 180  # 30 minutes timeout
+  delay: 10
+
+- name: Display data plane status
+  debug:
+    msg:
+      - "Data plane deployment ready: {{ dataplane_deployment.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first | default('Unknown') }}"
+      - "Data plane node set ready: {{ dataplane_nodeset.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first | default('Unknown') }}"

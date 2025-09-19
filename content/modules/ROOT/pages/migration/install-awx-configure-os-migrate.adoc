@@ -195,7 +195,7 @@ Navigate that URL with your browser to continue de lab.
 
 1. From the navigation panel, go to *Resources* → *Hosts*.
 2. Click *Add* and set the following parameters:
-   * **Name:** 172.21.0.206
+   * **Name:** `{rhoso_conversion_host_ip}`
    * **Inventory:** Conversion Host Inventory
    * **Variables:**
 
@@ -210,9 +210,9 @@ ansible_ssh_user: cloud-user
    * **Inventory:** Conversion Host Inventory
    * **Variables:**
 
-[source,bash,role=execute]
+[source,bash,role=execute,subs=attributes]
 ----
-ansible_host: 172.21.0.206
+ansible_host: {rhoso_conversion_host_ip}
 ansible_ssh_user: cloud-user
 ----
 
