@@ -96,7 +96,7 @@
 
 - name: Create subscription manager authentication JSON
   set_fact:
-    rhc_auth_json: '{"login": {"username": "{{ subscription_manager_username }}", "password": "{{ subscription_manager_password }}"}}'
+    rhc_auth_json: "{{ {'login': {'username': subscription_manager_username, 'password': subscription_manager_password}} | to_json }}"
   when: 
     - subscription_manager_username != ""
     - subscription_manager_password != ""
@@ -119,7 +119,7 @@
 
 - name: Create Red Hat registry authentication JSON
   set_fact:
-    registry_logins_json: '{"registry.redhat.io": {"{{ redhat_registry_username }}": "{{ redhat_registry_password }}"}}'
+    registry_logins_json: "{{ {'registry.redhat.io': {redhat_registry_username: redhat_registry_password}} | to_json }}"
   when:
     - redhat_registry_username != ""
     - redhat_registry_password != ""
