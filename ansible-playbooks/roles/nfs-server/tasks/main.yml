@@ -2,69 +2,66 @@
 # NFS Server Configuration role - Based on install-nfs-server.adoc documentation
 # This role connects to the NFS server from the bastion via SSH
 
-- name: Connect to NFS server and configure storage
-  delegate_to: "{{ nfs_server_hostname }}"
-  become: true
-  vars:
-    ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ guid }}key.pem"
-    ansible_user: "cloud-user"
-  block:
-    - name: Create NFS directories
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        mode: '0777'
-        owner: root
-        group: root
-      loop:
-        - "{{ nfs_cinder_path }}"
-        - "{{ nfs_glance_path }}"
+- name: Create NFS directories via SSH
+  shell: |
+    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} '{{ item }}'
+  loop:
+    - "sudo mkdir -p {{ nfs_cinder_path }}"
+    - "sudo mkdir -p {{ nfs_glance_path }}"
+    - "sudo chmod 777 {{ nfs_cinder_path }}"
+    - "sudo chmod 777 {{ nfs_glance_path }}"
+  register: nfs_directories_result
+  changed_when: true
 
-    - name: Configure NFS exports
-      ansible.builtin.copy:
-        dest: /etc/exports
-        content: |
-          {{ nfs_cinder_path }} *(rw,sync,no_root_squash)
-          {{ nfs_glance_path }} *(rw,sync,no_root_squash)
-        backup: true
-      notify: restart nfs-server
+- name: Configure NFS exports via SSH
+  shell: |
+    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} 'sudo tee /etc/exports' <<EOF
+    {{ nfs_cinder_path }} *(rw,sync,no_root_squash)
+    {{ nfs_glance_path }} *(rw,sync,no_root_squash)
+    EOF
+  register: nfs_exports_result
+  changed_when: true
 
-    - name: Delete default wired connection
-      community.general.nmcli:
-        conn_name: "Wired connection 1"
-        state: absent
-      ignore_errors: true
+- name: Delete default wired connection via SSH
+  shell: |
+    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} "sudo nmcli con delete 'Wired connection 1' || true"
+  register: delete_connection_result
+  changed_when: true
+  ignore_errors: true
 
-    - name: Configure static network interface for storage network
-      community.general.nmcli:
-        conn_name: "static-eth1"
-        ifname: eth1
-        type: ethernet
-        ip4: "{{ nfs_server_ip }}/24"
-        state: present
+- name: Configure static network interface via SSH
+  shell: |
+    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} "sudo nmcli con add con-name 'static-eth1' ifname eth1 type ethernet ip4 {{ nfs_server_ip }}/24"
+  register: configure_network_result
+  changed_when: true
 
-    - name: Activate the static network connection
-      community.general.nmcli:
-        conn_name: "static-eth1"
-        state: up
+- name: Activate static network connection via SSH
+  shell: |
+    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} "sudo nmcli con up 'static-eth1'"
+  register: activate_network_result
+  changed_when: true
 
-    - name: Start and enable NFS server
-      ansible.builtin.systemd_service:
-        name: nfs-server
-        state: started
-        enabled: true
+- name: Start and enable NFS server via SSH
+  shell: |
+    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} '{{ item }}'
+  loop:
+    - "sudo systemctl start nfs-server"
+    - "sudo systemctl enable nfs-server"
+  register: nfs_service_result
+  changed_when: true
 
-    - name: Export NFS shares
-      ansible.builtin.command:
-        cmd: exportfs -ra
-      changed_when: true
+- name: Export NFS shares via SSH
+  shell: |
+    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} "sudo exportfs -ra"
+  register: export_shares_result
+  changed_when: true
 
-    - name: Verify NFS exports
-      ansible.builtin.command:
-        cmd: exportfs -v
-      register: nfs_exports
-      changed_when: false
+- name: Verify NFS exports via SSH
+  shell: |
+    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} "sudo exportfs -v"
+  register: nfs_exports_verify
+  changed_when: false
 
-    - name: Display NFS exports
-      debug:
-        var: nfs_exports.stdout_lines
+- name: Display NFS exports
+  debug:
+    var: nfs_exports_verify.stdout_lines

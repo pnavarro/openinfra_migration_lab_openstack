@@ -1,12 +1,3 @@
 ---
 # NFS Server handlers
-
-- name: restart nfs-server
-  ansible.builtin.systemd_service:
-    name: nfs-server
-    state: restarted
-  delegate_to: "{{ nfs_server_hostname }}"
-  become: true
-  vars:
-    ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ guid }}key.pem"
-    ansible_user: "cloud-user"
+# Note: With SSH-based approach, handlers are not needed as service management is handled directly
