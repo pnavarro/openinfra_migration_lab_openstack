@@ -117,6 +117,13 @@
     - subscription_manager_username != ""
     - subscription_manager_password != ""
 
+- name: Create Red Hat registry authentication JSON
+  set_fact:
+    registry_logins_json: '{"registry.redhat.io": {"{{ redhat_registry_username }}": "{{ redhat_registry_password }}"}}'
+  when:
+    - redhat_registry_username != ""
+    - redhat_registry_password != ""
+
 - name: Create Red Hat registry secret
   kubernetes.core.k8s:
     state: present
@@ -127,8 +134,8 @@
         name: redhat-registry
         namespace: "{{ openstack_namespace }}"
       type: Opaque
-      stringData:
-        edpm_container_registry_logins: '{"registry.redhat.io": {"{{ redhat_registry_username }}": "{{ redhat_registry_password }}"}}'
+      data:
+        edpm_container_registry_logins: "{{ registry_logins_json | b64encode }}"
   when:
     - redhat_registry_username != ""
     - redhat_registry_password != ""

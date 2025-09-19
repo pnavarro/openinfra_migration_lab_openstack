@@ -1,8 +1,8 @@
-# Subscription Manager Secret Fix
+# JSON Secret Creation Fix (Subscription Manager & Registry)
 
 ## Problem
 
-The subscription manager secret creation was failing with:
+Both the subscription manager and Red Hat registry secret creation were failing with:
 ```
 Failed to create object: Secret in version "v1" cannot be handled as a Secret: 
 json: cannot unmarshal object into Go struct field Secret.stringData of type string
@@ -12,8 +12,12 @@ json: cannot unmarshal object into Go struct field Secret.stringData of type str
 
 The error occurred due to two issues:
 
-1. **Empty Credentials**: The `rhc_username` and `rhc_password` variables in the inventory were set to empty strings
+1. **Empty Credentials**: The credential variables in the inventory were set to empty strings
 2. **stringData vs data Field**: The Kubernetes API was having trouble processing the `stringData` field with JSON content
+
+This affected both secrets:
+- **Subscription Manager Secret**: Uses `rhc_username` and `rhc_password` 
+- **Red Hat Registry Secret**: Uses `registry_username` and `registry_password`
 
 ## User's Working CLI Command
 
@@ -41,6 +45,8 @@ rhc_password: "1amuntvalencian0!"  # Add your Red Hat Customer Portal password
 ```
 
 ### 2. Improved Secret Creation Method
+
+#### Subscription Manager Secret
 
 **File:** `roles/data-plane/tasks/main.yml`
 
@@ -84,6 +90,42 @@ rhc_password: "1amuntvalencian0!"  # Add your Red Hat Customer Portal password
   when: 
     - subscription_manager_username != ""
     - subscription_manager_password != ""
+```
+
+#### Red Hat Registry Secret
+
+**Before (Problematic):**
+```yaml
+- name: Create Red Hat registry secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      # ... metadata ...
+      type: Opaque
+      stringData:
+        edpm_container_registry_logins: '{"registry.redhat.io": {"{{ redhat_registry_username }}": "{{ redhat_registry_password }}"}}'
+```
+
+**After (Fixed):**
+```yaml
+- name: Create Red Hat registry authentication JSON
+  set_fact:
+    registry_logins_json: '{"registry.redhat.io": {"{{ redhat_registry_username }}": "{{ redhat_registry_password }}"}}'
+  when:
+    - redhat_registry_username != ""
+    - redhat_registry_password != ""
+
+- name: Create Red Hat registry secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      # ... metadata ...
+      type: Opaque
+      data:
+        edpm_container_registry_logins: "{{ registry_logins_json | b64encode }}"
+  when:
+    - redhat_registry_username != ""
+    - redhat_registry_password != ""
 ```
 
 ## Key Improvements
