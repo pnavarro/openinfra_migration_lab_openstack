@@ -2,203 +2,61 @@
 # Prerequisites role - Based on prereqs.adoc documentation
 # Installs required operators: NMState, MetalLB, and verifies Cert-Manager
 
-- name: Verify OpenShift cluster access
-  kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Node
-  register: cluster_nodes
-  failed_when: cluster_nodes.resources | length == 0
+- name: Check if pip3 is available
+  command: which pip3
+  register: pip3_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Python kubernetes library using pip3
+  pip:
+    name: 
+      - kubernetes
+      - openshift
+    executable: pip3
+    state: present
+  become: true
+  when: pip3_check.rc == 0
+  ignore_errors: true
+
+- name: Install Python kubernetes library using pip (fallback)
+  pip:
+    name: 
+      - kubernetes
+      - openshift
+    state: present
+  become: true
+  when: pip3_check.rc != 0
+  ignore_errors: true
+
+- name: Try installing kubernetes library via dnf/yum (RHEL fallback)
+  package:
+    name: python3-kubernetes
+    state: present
+  become: true
+  ignore_errors: true
+
+- name: Verify OpenShift cluster access using oc command
+  shell: oc get nodes
+  register: cluster_nodes_output
+  changed_when: false
+  failed_when: cluster_nodes_output.rc != 0
 
 - name: Display cluster nodes
   debug:
-    msg: "Found {{ cluster_nodes.resources | length }} cluster nodes"
+    var: cluster_nodes_output.stdout_lines
 
-- name: Create NMState operator namespace
-  kubernetes.core.k8s:
-    name: openshift-nmstate
-    api_version: v1
-    kind: Namespace
-    state: present
-    definition:
-      metadata:
-        labels:
-          kubernetes.io/metadata.name: openshift-nmstate
-          name: openshift-nmstate
-      spec:
-        finalizers:
-          - kubernetes
-
-- name: Create NMState OperatorGroup
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: operators.coreos.com/v1
-      kind: OperatorGroup
-      metadata:
-        annotations:
-          olm.providedAPIs: NMState.v1.nmstate.io
-        name: openshift-nmstate
-        namespace: openshift-nmstate
-      spec:
-        targetNamespaces:
-          - openshift-nmstate
-
-- name: Verify NMState OperatorGroup is created
-  kubernetes.core.k8s_info:
-    api_version: operators.coreos.com/v1
-    kind: OperatorGroup
-    namespace: openshift-nmstate
-  register: nmstate_operatorgroup
-  until: nmstate_operatorgroup.resources | length > 0
-  retries: 10
-  delay: 5
-
-- name: Create NMState Subscription
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: operators.coreos.com/v1alpha1
-      kind: Subscription
-      metadata:
-        labels:
-          operators.coreos.com/kubernetes-nmstate-operator.openshift-nmstate: ""
-        name: kubernetes-nmstate-operator
-        namespace: openshift-nmstate
-      spec:
-        channel: stable
-        installPlanApproval: Automatic
-        name: kubernetes-nmstate-operator
-        source: redhat-operators
-        sourceNamespace: openshift-marketplace
-
-- name: Wait for NMState operator to be ready
-  kubernetes.core.k8s_info:
-    api_version: operators.coreos.com/v1alpha1
-    kind: ClusterServiceVersion
-    namespace: openshift-nmstate
-  register: nmstate_csv
-  until: >
-    nmstate_csv.resources | length > 0 and
-    nmstate_csv.resources[0].status.phase == "Succeeded"
-  retries: 60
-  delay: 10
-
-- name: Create NMState instance
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: nmstate.io/v1
-      kind: NMState
-      metadata:
-        name: nmstate
-
-- name: Create MetalLB operator namespace
-  kubernetes.core.k8s:
-    name: metallb-system
-    api_version: v1
-    kind: Namespace
-    state: present
-
-- name: Create MetalLB OperatorGroup
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: operators.coreos.com/v1
-      kind: OperatorGroup
-      metadata:
-        name: metallb-operator
-        namespace: metallb-system
-
-- name: Verify MetalLB OperatorGroup is created
-  kubernetes.core.k8s_info:
-    api_version: operators.coreos.com/v1
-    kind: OperatorGroup
-    namespace: metallb-system
-  register: metallb_operatorgroup
-  until: metallb_operatorgroup.resources | length > 0
-  retries: 10
-  delay: 5
-
-- name: Create MetalLB Subscription
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: operators.coreos.com/v1alpha1
-      kind: Subscription
-      metadata:
-        name: metallb-operator-sub
-        namespace: metallb-system
-      spec:
-        channel: stable
-        name: metallb-operator
-        source: redhat-operators
-        sourceNamespace: openshift-marketplace
-
-- name: Wait for MetalLB operator to be ready
-  kubernetes.core.k8s_info:
-    api_version: operators.coreos.com/v1alpha1
-    kind: ClusterServiceVersion
-    namespace: metallb-system
-  register: metallb_csv
-  until: >
-    metallb_csv.resources | length > 0 and
-    metallb_csv.resources[0].status.phase == "Succeeded"
-  retries: 60
-  delay: 10
-
-- name: Create MetalLB instance
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: metallb.io/v1beta1
-      kind: MetalLB
-      metadata:
-        name: metallb
-        namespace: metallb-system
-      spec:
-        nodeSelector:
-          node-role.kubernetes.io/worker: ""
-
-- name: Wait for MetalLB controller deployment to be ready
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: controller
-    namespace: metallb-system
-  register: metallb_controller
-  until: >
-    metallb_controller.resources | length > 0 and
-    metallb_controller.resources[0].status.readyReplicas is defined and
-    metallb_controller.resources[0].status.readyReplicas >= 1
-  retries: 30
-  delay: 10
-
-- name: Wait for MetalLB speaker daemonset to be ready
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: DaemonSet
-    name: speaker
-    namespace: metallb-system
-  register: metallb_speaker
-  until: >
-    metallb_speaker.resources | length > 0 and
-    metallb_speaker.resources[0].status.numberReady is defined and
-    metallb_speaker.resources[0].status.numberReady > 0
-  retries: 30
-  delay: 10
-
-- name: Verify cert-manager is installed and running
+- name: Test kubernetes module availability
   kubernetes.core.k8s_info:
     api_version: v1
-    kind: Pod
-    namespace: cert-manager
-  register: cert_manager_pods
-  until: >
-    cert_manager_pods.resources | length > 0 and
-    cert_manager_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
-  retries: 30
-  delay: 10
+    kind: Node
+  register: k8s_test
+  ignore_errors: true
 
-- name: Display cert-manager status
-  debug:
-    msg: "cert-manager pods: {{ cert_manager_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }} running"
+- name: Use kubernetes modules if available
+  include_tasks: k8s-modules.yml
+  when: k8s_test is succeeded
+
+- name: Fallback to oc commands if kubernetes modules fail
+  include_tasks: oc-native.yml
+  when: k8s_test is failed
