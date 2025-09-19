@@ -94,6 +94,13 @@
         ssh-privatekey: "{{ nova_migration_key_files.results[0].content }}"
         ssh-publickey: "{{ nova_migration_key_files.results[1].content }}"
 
+- name: Create subscription manager authentication JSON
+  set_fact:
+    rhc_auth_json: '{"login": {"username": "{{ subscription_manager_username }}", "password": "{{ subscription_manager_password }}"}}'
+  when: 
+    - subscription_manager_username != ""
+    - subscription_manager_password != ""
+
 - name: Create subscription manager secret
   kubernetes.core.k8s:
     state: present
@@ -104,8 +111,8 @@
         name: subscription-manager
         namespace: "{{ openstack_namespace }}"
       type: Opaque
-      stringData:
-        rhc_auth: '{"login": {"username": "{{ subscription_manager_username }}", "password": "{{ subscription_manager_password }}"}}'
+      data:
+        rhc_auth: "{{ rhc_auth_json | b64encode }}"
   when: 
     - subscription_manager_username != ""
     - subscription_manager_password != ""
