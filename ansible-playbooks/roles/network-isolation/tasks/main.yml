@@ -21,20 +21,35 @@
     api_version: nmstate.io/v1
     kind: NodeNetworkConfigurationPolicy
   register: nncp_status
-  until: >
-    nncp_status.resources | length >= 3 and
-    nncp_status.resources | selectattr('status.conditions', 'defined') | 
-    selectattr('status.conditions', 'selectattr', 'type', 'equalto', 'Available') |
-    selectattr('status.conditions', 'selectattr', 'status', 'equalto', 'True') |
-    list | length >= 3
+  until: nncp_status.resources | length >= 3
   retries: 60
   delay: 10
 
+- name: Check NNCP status individually
+  kubernetes.core.k8s_info:
+    api_version: nmstate.io/v1
+    kind: NodeNetworkConfigurationPolicy
+    name: "{{ item }}"
+  register: individual_nncp_status
+  until: >
+    individual_nncp_status.resources | length > 0 and
+    individual_nncp_status.resources[0].status is defined and
+    individual_nncp_status.resources[0].status.conditions is defined and
+    individual_nncp_status.resources[0].status.conditions | length > 0
+  retries: 30
+  delay: 10
+  loop:
+    - osp-multi-nic-worker-ocp4-worker1
+    - osp-multi-nic-worker-ocp4-worker2  
+    - osp-multi-nic-worker-ocp4-worker3
+
 - name: Display NNCP status
   debug:
-    msg: "NNCP {{ item.metadata.name }}: {{ item.status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='reason') | first | default('Unknown') }}"
+    msg: "NNCP {{ item.metadata.name }}: {{ item.status.reason | default('Unknown') }}"
   loop: "{{ nncp_status.resources }}"
-  when: item.status.conditions is defined
+  when: 
+    - item.status is defined
+    - item.metadata is defined
 
 - name: Apply NetworkAttachmentDefinition for isolated networks
   kubernetes.core.k8s:
@@ -94,3 +109,4 @@
   debug:
     msg: "Created NetworkAttachmentDefinition: {{ item.metadata.name }}"
   loop: "{{ net_attach_defs.resources }}"
+

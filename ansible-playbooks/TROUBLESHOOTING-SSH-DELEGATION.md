@@ -100,15 +100,17 @@ Your Workstation → Bastion → Internal Resources
 Use the provided test script to verify SSH connectivity:
 
 ```bash
-# Run the connectivity test script
+# Run the connectivity test script (works from your workstation or bastion)
 ./test-ssh-connectivity.sh
 ```
 
-This script will test:
-- ✅ SSH connectivity to NFS server (`nfsserver`)
-- ✅ SSH connectivity to compute node (`compute01`)
-- ✅ Sudo access on both nodes
-- ✅ Proper SSH key usage
+This script will:
+- 🔍 **Auto-detect** if you're running from workstation or bastion
+- ✅ **Test bastion connectivity** (if running from workstation)
+- ✅ **Test SSH to NFS server** (`nfsserver`)
+- ✅ **Test SSH to compute node** (`compute01`)
+- ✅ **Test sudo access** on both nodes
+- ✅ **Verify SSH key usage** and paths
 
 ### Manual Testing
 

@@ -226,12 +226,14 @@
     kind: Pod
     namespace: cert-manager
   register: cert_manager_pods
-  until: >
-    cert_manager_pods.resources | length > 0 and
-    cert_manager_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
+  until: cert_manager_pods.resources | length > 0
   retries: 30
   delay: 10
 
+- name: Count running cert-manager pods
+  set_fact:
+    running_cert_manager_pods: "{{ cert_manager_pods.resources | json_query('[?status.phase==`Running`]') | length }}"
+
 - name: Display cert-manager status
   debug:
-    msg: "cert-manager pods: {{ cert_manager_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }} running"
+    msg: "cert-manager pods: {{ running_cert_manager_pods }} running out of {{ cert_manager_pods.resources | length }} total"

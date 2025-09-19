@@ -81,11 +81,16 @@
   loop: "{{ control_plane_pods.resources }}"
   when: control_plane_pods.resources | length > 0
 
+- name: Count running control plane pods
+  set_fact:
+    running_cp_pods: "{{ control_plane_pods.resources | json_query('[?status.phase==`Running`]') | length }}"
+  when: control_plane_pods.resources | length > 0
+
 - name: Summary of deployment status
   debug:
     msg:
       - "=== RHOSO Deployment Summary ==="
-      - "Control plane pods running: {{ control_plane_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}"
+      - "Control plane pods running: {{ running_cp_pods | default(0) }}"
       - "Total control plane pods: {{ control_plane_pods.resources | length }}"
       - "OpenStack client available: {{ openstackclient_pods.resources | length > 0 }}"
       - "Deployment completed successfully!"

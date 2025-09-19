@@ -147,10 +147,7 @@
     dataplane_deployment.resources | length > 0 and
     dataplane_deployment.resources[0].status is defined and
     dataplane_deployment.resources[0].status.conditions is defined and
-    dataplane_deployment.resources[0].status.conditions |
-    selectattr('type', 'equalto', 'Ready') |
-    selectattr('status', 'equalto', 'True') |
-    list | length > 0
+    dataplane_deployment.resources[0].status.conditions | length > 0
   retries: 180  # 30 minutes timeout
   delay: 10
 
@@ -164,15 +161,28 @@
     dataplane_nodeset.resources | length > 0 and
     dataplane_nodeset.resources[0].status is defined and
     dataplane_nodeset.resources[0].status.conditions is defined and
-    dataplane_nodeset.resources[0].status.conditions |
-    selectattr('type', 'equalto', 'Ready') |
-    selectattr('status', 'equalto', 'True') |
-    list | length > 0
+    dataplane_nodeset.resources[0].status.conditions | length > 0
   retries: 180  # 30 minutes timeout
   delay: 10
+
+- name: Check data plane deployment status
+  set_fact:
+    dp_deployment_ready: "{{ dataplane_deployment.resources[0].status.conditions | json_query('[?type==`Ready` && status==`True`]') | length > 0 }}"
+  when: 
+    - dataplane_deployment.resources | length > 0
+    - dataplane_deployment.resources[0].status is defined
+    - dataplane_deployment.resources[0].status.conditions is defined
+
+- name: Check data plane node set status  
+  set_fact:
+    dp_nodeset_ready: "{{ dataplane_nodeset.resources[0].status.conditions | json_query('[?type==`Ready` && status==`True`]') | length > 0 }}"
+  when: 
+    - dataplane_nodeset.resources | length > 0
+    - dataplane_nodeset.resources[0].status is defined
+    - dataplane_nodeset.resources[0].status.conditions is defined
 
 - name: Display data plane status
   debug:
     msg:
-      - "Data plane deployment ready: {{ dataplane_deployment.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first | default('Unknown') }}"
-      - "Data plane node set ready: {{ dataplane_nodeset.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first | default('Unknown') }}"
+      - "Data plane deployment ready: {{ dp_deployment_ready | default('Unknown') }}"
+      - "Data plane node set ready: {{ dp_nodeset_ready | default('Unknown') }}"

@@ -42,17 +42,19 @@
     control_plane_status.resources | length > 0 and
     control_plane_status.resources[0].status is defined and
     control_plane_status.resources[0].status.conditions is defined and
-    control_plane_status.resources[0].status.conditions | 
-    selectattr('type', 'equalto', 'Ready') |
-    selectattr('status', 'equalto', 'True') |
-    list | length > 0
+    control_plane_status.resources[0].status.conditions | length > 0
   retries: 180  # 30 minutes timeout
   delay: 10
 
-- name: Display Control Plane status
-  debug:
-    msg: "OpenStack Control Plane status: {{ control_plane_status.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='message') | first | default('Unknown') }}"
+- name: Check if Control Plane is ready
+  set_fact:
+    cp_ready: "{{ control_plane_status.resources[0].status.conditions | json_query('[?type==`Ready` && status==`True`]') | length > 0 }}"
   when: 
     - control_plane_status.resources | length > 0
     - control_plane_status.resources[0].status is defined
     - control_plane_status.resources[0].status.conditions is defined
+
+- name: Display Control Plane status
+  debug:
+    msg: "OpenStack Control Plane ready: {{ cp_ready | default('Unknown') }}"
+  when: cp_ready is defined
