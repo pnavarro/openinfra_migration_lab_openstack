@@ -1,12 +1,33 @@
 ---
 # Install OpenStack Operators role - Based on install-operators.adoc documentation
 
-- name: Clone the lab repository
-  ansible.builtin.git:
-    repo: "{{ repo_url }}"
-    dest: "{{ ansible_env.HOME }}/{{ repo_destination }}"
-    version: HEAD
-    force: true
+- name: Create working directory for OpenStack files
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/{{ files_directory }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy OpenStack configuration files to working directory
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ ansible_env.HOME }}/{{ files_directory }}/{{ item | basename }}"
+    mode: '0644'
+  loop:
+    - "{{ playbook_dir }}/../content/files/osp-ng-nncp-w1.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-nncp-w2.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-nncp-w3.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-dataplane-node-set-deploy.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-dataplane-netconfig.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-openstack-operator.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-openstack-operator-init.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-ctlplane-deploy.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-ctlplane-secret.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-dataplane-deployment.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-netattach.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-metal-lb-ip-address-pools.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-metal-lb-l2-advertisements.yaml"
+    - "{{ playbook_dir }}/../content/files/osp-ng-libvirt-secret.yaml"
+    - "{{ playbook_dir }}/../content/files/nfs-cinder-conf"
 
 - name: Create openstack-operators project
   kubernetes.core.k8s:

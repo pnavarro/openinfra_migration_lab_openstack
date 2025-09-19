@@ -78,10 +78,9 @@ networks:
 openstack_operators_namespace: "openstack-operators"
 openstack_namespace: "openstack"
 
-# Git Repository Configuration
-repo_url: "https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2.git"
-repo_destination: "labrepo"
-files_directory: "{{ repo_destination }}/content/files"
+# File Directory Configuration
+# Files will be copied to a working directory in the user's home
+files_directory: "openstack-files"
 
 # Compute Node Configuration
 compute_nodes:
