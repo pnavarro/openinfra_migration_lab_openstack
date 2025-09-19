@@ -17,6 +17,7 @@ openshift_cluster_admin_password: "{{ ocp_admin_password | default('changeme') }
 nfs_server_ip: "172.18.0.13"
 nfs_cinder_path: "/nfs/cinder"
 nfs_glance_path: "/nfs/glance"
+nfs_aap_path: "/nfs/aap"
 
 # Network Configuration based on the networking table
 networks:

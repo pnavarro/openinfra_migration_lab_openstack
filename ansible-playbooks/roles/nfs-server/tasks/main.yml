@@ -1,6 +1,8 @@
 ---
 # NFS Server Configuration role - Based on install-nfs-server.adoc documentation
 # This role connects to the NFS server from the bastion via SSH
+# Configures NFS shares for Cinder, Glance, and AAP (Ansible Automation Platform)
+# Creates corresponding Kubernetes StorageClass and PersistentVolume for AAP
 
 - name: Create NFS directories via SSH
   shell: |
@@ -8,8 +10,10 @@
   loop:
     - "sudo mkdir -p {{ nfs_cinder_path }}"
     - "sudo mkdir -p {{ nfs_glance_path }}"
+    - "sudo mkdir -p {{ nfs_aap_path }}"
     - "sudo chmod 777 {{ nfs_cinder_path }}"
     - "sudo chmod 777 {{ nfs_glance_path }}"
+    - "sudo chmod 777 {{ nfs_aap_path }}"
   register: nfs_directories_result
   changed_when: true
 
@@ -18,6 +22,7 @@
     ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ nfs_server_hostname }} 'sudo tee /etc/exports' <<EOF
     {{ nfs_cinder_path }} *(rw,sync,no_root_squash)
     {{ nfs_glance_path }} *(rw,sync,no_root_squash)
+    {{ nfs_aap_path }} *(rw,sync,no_root_squash)
     EOF
   register: nfs_exports_result
   changed_when: true
@@ -65,3 +70,49 @@
 - name: Display NFS exports
   debug:
     var: nfs_exports_verify.stdout_lines
+
+- name: Create NFS StorageClass and PersistentVolume
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      - apiVersion: storage.k8s.io/v1
+        kind: StorageClass
+        metadata:
+          name: nfs
+        provisioner: kubernetes.io/no-provisioner
+        reclaimPolicy: Delete
+      - apiVersion: v1
+        kind: PersistentVolume
+        metadata:
+          name: nfs-pv1
+        spec:
+          accessModes:
+            - ReadWriteOnce
+            - ReadWriteMany
+          capacity:
+            storage: 10Gi
+          nfs:
+            path: "{{ nfs_aap_path }}"
+            server: "{{ nfs_server_ip }}"
+          persistentVolumeReclaimPolicy: Delete
+          storageClassName: nfs
+          volumeMode: Filesystem
+
+- name: Verify StorageClass and PersistentVolume creation
+  kubernetes.core.k8s_info:
+    api_version: "{{ item.api_version }}"
+    kind: "{{ item.kind }}"
+    name: "{{ item.name }}"
+  register: nfs_resources_info
+  loop:
+    - api_version: storage.k8s.io/v1
+      kind: StorageClass
+      name: nfs
+    - api_version: v1
+      kind: PersistentVolume
+      name: nfs-pv1
+
+- name: Display NFS StorageClass and PersistentVolume status
+  debug:
+    msg: "{{ item.item.kind }} '{{ item.item.name }}' - Status: {{ 'Found' if item.resources | length > 0 else 'Not Found' }}"
+  loop: "{{ nfs_resources_info.results }}"
