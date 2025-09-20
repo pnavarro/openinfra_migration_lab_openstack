@@ -67,6 +67,8 @@
   register: nmstate_csv
   until: >
     nmstate_csv.resources | length > 0 and
+    nmstate_csv.resources[0].status is defined and
+    nmstate_csv.resources[0].status.phase is defined and
     nmstate_csv.resources[0].status.phase == "Succeeded"
   retries: 60
   delay: 10
@@ -152,6 +154,8 @@
   register: metallb_csv
   until: >
     metallb_csv.resources | length > 0 and
+    metallb_csv.resources[0].status is defined and
+    metallb_csv.resources[0].status.phase is defined and
     metallb_csv.resources[0].status.phase == "Succeeded"
   retries: 60
   delay: 10
