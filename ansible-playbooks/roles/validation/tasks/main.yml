@@ -53,18 +53,6 @@
     var: network_agents.stdout_lines
   when: network_agents is defined
 
-- name: Discover compute hosts in Nova cell
-  kubernetes.core.k8s_exec:
-    namespace: "{{ openstack_namespace }}"
-    pod: nova-cell0-conductor-0
-    command: nova-manage cell_v2 discover_hosts --verbose
-  register: discover_hosts
-  ignore_errors: true
-
-- name: Display host discovery results
-  debug:
-    var: discover_hosts.stdout_lines
-  when: discover_hosts is defined
 
 - name: Verify control plane services are running
   kubernetes.core.k8s_info:
