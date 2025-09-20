@@ -119,9 +119,6 @@ spec:
              name: br-ex
              mtu: 1500
              use_dhcp: false
-             addresses:
-             - ip_netmask:
-                {{ external_ip }}/{{ external_cidr }}
              members:
              - type: interface
                name: eth6
