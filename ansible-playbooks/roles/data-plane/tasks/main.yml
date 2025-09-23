@@ -167,52 +167,37 @@
   retries: 5
   delay: 10
 
-- name: Wait for data plane deployment to complete
+- name: Wait for OpenStack Data Plane Deployment to show "Setup complete"
   kubernetes.core.k8s_info:
     api_version: dataplane.openstack.org/v1beta1
     kind: OpenStackDataPlaneDeployment
+    name: openstack-edpm-compute-1
     namespace: "{{ openstack_namespace }}"
-  register: dataplane_deployment
+  register: dataplane_deployment_status
   until: >
-    dataplane_deployment.resources | length > 0 and
-    dataplane_deployment.resources[0].status is defined and
-    dataplane_deployment.resources[0].status.conditions is defined and
-    dataplane_deployment.resources[0].status.conditions | length > 0
-  retries: 180  # 30 minutes timeout
+    dataplane_deployment_status.resources | length > 0 and
+    dataplane_deployment_status.resources[0].status is defined and
+    dataplane_deployment_status.resources[0].status.get('message', '') == 'Setup complete'
+  retries: 720  # 120 minutes timeout (data plane takes longer than control plane)
   delay: 10
 
-- name: Wait for data plane node set to be ready
-  kubernetes.core.k8s_info:
-    api_version: dataplane.openstack.org/v1beta1
-    kind: OpenStackDataPlaneNodeSet
-    namespace: "{{ openstack_namespace }}"
-  register: dataplane_nodeset
-  until: >
-    dataplane_nodeset.resources | length > 0 and
-    dataplane_nodeset.resources[0].status is defined and
-    dataplane_nodeset.resources[0].status.conditions is defined and
-    dataplane_nodeset.resources[0].status.conditions | length > 0
-  retries: 180  # 30 minutes timeout
-  delay: 10
-
-- name: Check data plane deployment status
-  set_fact:
-    dp_deployment_ready: "{{ dataplane_deployment.resources[0].status.conditions | json_query('[?type==`Ready` && status==`True`]') | length > 0 }}"
-  when: 
-    - dataplane_deployment.resources | length > 0
-    - dataplane_deployment.resources[0].status is defined
-    - dataplane_deployment.resources[0].status.conditions is defined
-
-- name: Check data plane node set status  
-  set_fact:
-    dp_nodeset_ready: "{{ dataplane_nodeset.resources[0].status.conditions | json_query('[?type==`Ready` && status==`True`]') | length > 0 }}"
-  when: 
-    - dataplane_nodeset.resources | length > 0
-    - dataplane_nodeset.resources[0].status is defined
-    - dataplane_nodeset.resources[0].status.conditions is defined
-
-- name: Display data plane status
+- name: Display Data Plane Deployment final status
   debug:
-    msg:
-      - "Data plane deployment ready: {{ dp_deployment_ready | default('Unknown') }}"
-      - "Data plane node set ready: {{ dp_nodeset_ready | default('Unknown') }}"
+    msg: |
+      OpenStack Data Plane Deployment Status: {{ dataplane_deployment_status.resources[0].status.get('message', 'No message') }}
+      Setup Complete: {{ dataplane_deployment_status.resources[0].status.get('message', '') == 'Setup complete' }}
+      NodeSets: {{ dataplane_deployment_status.resources[0].status.get('nodeSetConditions', {}).keys() | list }}
+  when: dataplane_deployment_status.resources | length > 0
+
+- name: Discover compute hosts in Nova cell
+  kubernetes.core.k8s_exec:
+    namespace: "{{ openstack_namespace }}"
+    pod: nova-cell0-conductor-0
+    command: nova-manage cell_v2 discover_hosts --verbose
+  register: discover_hosts
+  ignore_errors: true
+
+- name: Display host discovery results
+  debug:
+    var: discover_hosts.stdout_lines
+  when: discover_hosts is defined and discover_hosts.stdout_lines is defined
