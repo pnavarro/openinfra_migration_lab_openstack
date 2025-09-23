@@ -36,7 +36,7 @@
   retries: 5
   delay: 10
 
-- name: Wait for OpenStack Control Plane to show "Setup complete"
+- name: Wait for OpenStack Control Plane to be ready
   kubernetes.core.k8s_info:
     api_version: core.openstack.org/v1beta1
     kind: OpenStackControlPlane
@@ -46,13 +46,22 @@
   until: >
     control_plane_status.resources | length > 0 and
     control_plane_status.resources[0].status is defined and
-    control_plane_status.resources[0].status.get('message', '') == 'Setup complete'
+    control_plane_status.resources[0].status.conditions is defined and
+    control_plane_status.resources[0].status.conditions | json_query('[?type==`Ready` && status==`True`]') | length > 0
   retries: 360  # 60 minutes timeout (longer for initial setup)
   delay: 10
+
+- name: Check if Control Plane is ready
+  set_fact:
+    cp_ready: "{{ control_plane_status.resources[0].status.conditions | json_query('[?type==`Ready` && status==`True`]') | length > 0 }}"
+  when: 
+    - control_plane_status.resources | length > 0
+    - control_plane_status.resources[0].status is defined
+    - control_plane_status.resources[0].status.conditions is defined
 
 - name: Display Control Plane final status
   debug:
     msg: |
-      OpenStack Control Plane Status: {{ control_plane_status.resources[0].status.get('message', 'No message') }}
-      Setup Complete: {{ control_plane_status.resources[0].status.get('message', '') == 'Setup complete' }}
+      OpenStack Control Plane Ready: {{ cp_ready | default('Unknown') }}
+      Ready Conditions: {{ control_plane_status.resources[0].status.conditions | json_query('[?type==`Ready`]') | length }} found
   when: control_plane_status.resources | length > 0
