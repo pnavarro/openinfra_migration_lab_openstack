@@ -7,7 +7,7 @@
     conn_name: "static-eth1"
     ifname: eth1
     type: ethernet
-    ip4: "{{ rhoso_external_ip_bastion | default('172.21.0.50') }}/24"
+    ip4: "{{ rhoso_external_ip_bastion | default('172.21.0.50') }}/16"
     state: present
   vars:
     rhoso_external_ip_bastion: "{{ hostvars[inventory_hostname].get('rhoso_external_ip_bastion', '172.21.0.50') }}"

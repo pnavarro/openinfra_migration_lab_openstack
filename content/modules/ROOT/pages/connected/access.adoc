@@ -58,6 +58,6 @@ Configure the bastion with external network
 
 [source,bash,role=execute,subs=attributes]
 ----
-sudo nmcli con add con-name "static-eth1" ifname eth1 type ethernet ip4 {rhoso_external_ip_bastion}/24
+sudo nmcli con add con-name "static-eth1" ifname eth1 type ethernet ip4 {rhoso_external_ip_bastion}/16
 sudo nmcli con up "static-eth1"
 ----

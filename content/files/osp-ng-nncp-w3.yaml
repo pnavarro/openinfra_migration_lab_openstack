@@ -48,7 +48,7 @@ spec:
       ipv4:
         address:
         - ip: EXTERNAL_IP_WORKER_3
-          prefix-length: 24 
+          prefix-length: 16
         enabled: true
         dhcp: false
       ipv6:
