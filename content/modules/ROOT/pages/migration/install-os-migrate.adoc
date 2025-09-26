@@ -53,7 +53,7 @@ Create the os_migrate_vars.yamls file:
 
 [source,bash,role=execute,subs=attributes]
 ----
-cat << EOF > /home/lab-user/os-migrate-env/os_migrate_vars.yaml
+cat << EOF > /home/lab-user/os-migrate-env/os_migrate_vars_demo_redhat_com.yaml
 runner_from_aee: false
 # osm working directory:
 os_migrate_vmw_data_dir: /tmp/os-migrate
@@ -81,6 +81,7 @@ os_migrate_tear_down: false
 
 vms_list:
   - haproxy-user1
+EOF
 ----
 
 [NOTE]
@@ -99,7 +100,7 @@ And finally create the secrets files with :
 
 [source,bash,role=execute,subs=attributes]
 ----
-cat << EOF > /home/lab-user/os-migrate-env/secrets.yaml
+cat << EOF > /home/lab-user/os-migrate-env/secrets_demo_redhat_com.yaml
 # VMware parameters:
 vcenter_hostname: {vcenter_console}
 vcenter_username: {vcenter_full_user}
@@ -128,6 +129,7 @@ In the bastion, launch the migration:
 
 [source,bash,role=execute,subs=attributes]
 ----
+cd
 sudo podman secret create conv-key /home/lab-user/.ssh/{guid}key.pem
 sudo podman run --network host -it -v $PWD/os-migrate-env:/runner/env:z --env ANSIBLE_CALLBACKS_ENABLED=profile_tasks --secret conv-key,target=/runner/key,mode=0600,type=mount --user root quay.io/os-migrate/vmware-migration-kit ansible-playbook -i /runner/env/inventory.yaml os_migrate.vmware_migration_kit.migration -e @/runner/env/os_migrate_vars_demo_redhat_com.yaml -e @/runner/env/secrets_demo_redhat_com.yaml
 ----

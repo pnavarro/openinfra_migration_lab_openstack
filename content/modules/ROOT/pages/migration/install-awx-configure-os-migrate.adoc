@@ -1,67 +1,6 @@
 = Install, configure Ansible Automation Plaform and launch a migration 
 
-== Prerequisites
-
-From the bastion, connect to the *NFS server* host and configure the NFS share for Ansible Automation Platform:
-
-[source,bash,role=execute,subs=attributes]
-----
-ssh -i /home/lab-user/.ssh/{guid}key.pem cloud-user@nfsserver
-----
-
-Escalate to root:
-
-[source,bash,role=execute]
-----
-sudo -i
-----
-
-[source,bash,role=execute,subs=attributes]
-----
-mkdir -p /nfs/awx
-chmod 777 /nfs/awx
-cat << EOF >> /etc/exports
-/nfs/awx *(rw,sync,no_root_squash)
-EOF
-systemctl restart nfs-server
-logout
-----
-
-Back in the bastion, create the storageclass and persistent volume pointing to the just configured NFS share:
-
-In the bastion:
-
-[source,bash,role=execute,subs=attributes]
-----
-cat << EOF | oc apply -f -
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-   name: nfs
-provisioner: kubernetes.io/no-provisioner
-reclaimPolicy: Delete
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: nfs-pv1
-spec:
-  accessModes:
-  - ReadWriteOnce
-  - ReadWriteMany
-  capacity:
-    storage: 10Gi
-  nfs:
-    path: /nfs/awx
-    server: 172.18.0.13
-  persistentVolumeReclaimPolicy: Delete
-  storageClassName: nfs
-  volumeMode: Filesystem
-EOF
-----
-
-
-== Install Ansible Execution Platform
+== Install AWX
 
 In the bastion:
 
@@ -141,6 +80,23 @@ awx-demo-postgres   ClusterIP   None           <none>        5432/TCP       4m4s
 awx-demo-service    NodePort    10.109.40.38   <none>        80:31006/TCP   3m56s
 ----
 
+Make sure all the pods are running. (You might need to wait around 4 minutes):
+
+[source,bash,role=execute]
+----
+kubectl get pods -n awx
+----
+
+.Sample Output
+----
+NAME                                               READY   STATUS      RESTARTS   AGE
+awx-operator-controller-manager-745b55d94b-ptnzh   2/2     Running     0          12m
+awx-vmware-migrations-migration-24.6.1-fcjdm       0/1     Completed   0          3m27s
+awx-vmware-migrations-postgres-15-0                1/1     Running     0          4m33s
+awx-vmware-migrations-task-766d48c758-bhrrm        4/4     Running     0          3m55s
+awx-vmware-migrations-web-6445b8f574-gfnng         3/3     Running     0          3m56s
+----
+
 Get the secret to access AWX dashboard:
 
 [source,bash,role=execute]
@@ -158,7 +114,7 @@ oc get routes -n awx
 .Sample Output
 ----
 NAME                    HOST/PORT                                                                 PATH   SERVICES                        PORT   TERMINATION     WILDCARD
-awx-vmware-migrations   awx-vmware-migrations-awx.apps.cluster-pz52j.dynamic.redhatworkshops.io          awx-vmware-migrations-service   http   edge/Redirect   None
+awx-vmware-migrations   awx-vmware-migrations-awx.apps.cluster-{guid}.dynamic.redhatworkshops.io          awx-vmware-migrations-service   http   edge/Redirect   None
 ----
 
 The URL of your AWX dashboard is:
@@ -167,7 +123,7 @@ The URL of your AWX dashboard is:
 awx-vmware-migrations-awx.apps.cluster-{guid}.dynamic.redhatworkshops.io
 ----
 
-Navigate that URL with your browser to continue de lab.
+Navigate that URL with your browser to continue de lab. (Use admin as username and the password obtained in the previous step)
 
 == Configuring AWX to Launch a Migration
 
@@ -240,16 +196,16 @@ Click *Save*.
 
 1. From the navigation panel, go to *Administration* → *Execution Environments*.
 2. Click *Create Execution Environment* and set the following parameters:
-   * **Name:** osm-migration-kit Execution Environment
-   * **Image:** `quay.io/repository/rhn_engineering_mbultel/osm-fedora`
+   * **Name:** vmware migration kit execution environment
+   * **Image:** `quay.io/rhn_engineering_mbultel/osm-fedora`
 3. Click *Create Execution Environment*.
 
 === Creating a Project
 
 1. From the navigation panel, go to *Resources* → *Projects*.
 2. Click *Create Project* and set the following parameters:
-   * **Name:** osm-migration-kit
-   * **Execution Environment:** osm-migration-kit Execution Environment
+   * **Name:** vmware migration kit project
+   * **Execution Environment:** vmware migration kit execution environment
    * **Source Control Type:** Git
    * **Source Control URL:** `https://github.com/os-migrate/vmware-migration-kit`
 3. Click *Create Project*.
@@ -335,9 +291,9 @@ Go back to the AWX dashboard.
 2. Click *Add Job Template* and set the following parameters:
    * **Name:** Windows VM Migration
    * **Inventory:** Conversion Host Inventory
-   * **Project:** osm-migration-kit
+   * **Project:** vmware migration kit project
    * **Playbook:** `vmware_migration_kit/playbooks/migration.yml`
-   * **Execution Environment:** osm-migration-kit Execution Environment
+   * **Execution Environment:** vmware migration kit execution environment
    * **Credentials:** Bastion key
    * **Extra Variables:** Copy the content of `/home/lab-user/os-migrate-env/os_migrate_for_awx.yaml` from the bastion
 3. Click *Save*.

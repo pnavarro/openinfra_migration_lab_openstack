@@ -167,6 +167,21 @@
   retries: 5
   delay: 10
 
+- name: Debug Data Plane Deployment status structure
+  kubernetes.core.k8s_info:
+    api_version: dataplane.openstack.org/v1beta1
+    kind: OpenStackDataPlaneDeployment
+    name: openstack-edpm-compute-1
+    namespace: "{{ openstack_namespace }}"
+  register: dataplane_deployment_debug
+
+- name: Display current Data Plane Deployment status for debugging
+  debug:
+    msg: |
+      Full status: {{ dataplane_deployment_debug.resources[0].status if dataplane_deployment_debug.resources | length > 0 else 'No resources found' }}
+      Conditions: {{ dataplane_deployment_debug.resources[0].status.conditions if dataplane_deployment_debug.resources | length > 0 and dataplane_deployment_debug.resources[0].status.conditions is defined else 'No conditions found' }}
+  when: dataplane_deployment_debug.resources | length > 0
+
 - name: Wait for OpenStack Data Plane Deployment to show "Setup complete"
   kubernetes.core.k8s_info:
     api_version: dataplane.openstack.org/v1beta1
@@ -177,16 +192,26 @@
   until: >
     dataplane_deployment_status.resources | length > 0 and
     dataplane_deployment_status.resources[0].status is defined and
-    dataplane_deployment_status.resources[0].status.get('message', '') == 'Setup complete'
+    (
+      (dataplane_deployment_status.resources[0].status.get('conditions', []) | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length > 0) or
+      (dataplane_deployment_status.resources[0].status.get('conditions', []) | selectattr('type', 'equalto', 'DeploymentReady') | selectattr('status', 'equalto', 'True') | list | length > 0) or
+      (dataplane_deployment_status.resources[0].status.get('deploymentConditions', {}) | length > 0 and 
+       dataplane_deployment_status.resources[0].status.deploymentConditions | dict2items | selectattr('value.status', 'equalto', 'True') | list | length == (dataplane_deployment_status.resources[0].status.deploymentConditions | dict2items | list | length)) or
+      (dataplane_deployment_status.resources[0].status.get('message', '') == 'Setup complete')
+    )
   retries: 720  # 120 minutes timeout (data plane takes longer than control plane)
   delay: 10
 
 - name: Display Data Plane Deployment final status
   debug:
     msg: |
-      OpenStack Data Plane Deployment Status: {{ dataplane_deployment_status.resources[0].status.get('message', 'No message') }}
-      Setup Complete: {{ dataplane_deployment_status.resources[0].status.get('message', '') == 'Setup complete' }}
+      === OpenStack Data Plane Deployment Final Status ===
+      Message: {{ dataplane_deployment_status.resources[0].status.get('message', 'No message') }}
+      Conditions: {{ dataplane_deployment_status.resources[0].status.get('conditions', []) | map(attribute='type') | list }}
+      Ready Conditions: {{ dataplane_deployment_status.resources[0].status.get('conditions', []) | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length > 0 }}
+      Deployment Conditions: {{ dataplane_deployment_status.resources[0].status.get('deploymentConditions', {}).keys() | list }}
       NodeSets: {{ dataplane_deployment_status.resources[0].status.get('nodeSetConditions', {}).keys() | list }}
+      Setup Complete: {{ dataplane_deployment_status.resources[0].status.get('message', '') == 'Setup complete' }}
   when: dataplane_deployment_status.resources | length > 0
 
 - name: Discover compute hosts in Nova cell
