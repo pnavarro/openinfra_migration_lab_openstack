@@ -15,4 +15,25 @@ Then we will go through a virtual machine migration from Vmware vCenter to the R
 Within the lab environment, you will be able to copy and paste the specified commands into the CLI.
 For some steps you may also need to edit some of the commands from the  instructions.
 
+== Access Your Lab Environment
+
+. Access to the bastion executing the following command: 
++
+[source,bash,role=execute,subs=attributes]
+----
+ssh {bastion_ssh_user_name}@{bastion_public_hostname} -p {bastion_ssh_port} 
+----
++
+SSH password is `{bastion_ssh_password}`. The uuid of your lab is: `{guid}`
+. Optionally copy your public SSH key to the bastion allowing you to authenticate with the server without entering a password every time you connect: 
++
+[source,bash,role=execute,subs=attributes]
+----
+ssh-copy-id -p {bastion_ssh_port} {bastion_ssh_user_name}@{bastion_public_hostname} 
+----
++
+
+If needed, you can navigate to the OpenShift console URL: {openshift_cluster_console_url}[{openshift_cluster_console_url}^] using user `admin` and password `{openshift_cluster_admin_password}`
+
+
 *Be sure to review all commands carefully both for functionality and syntax!*

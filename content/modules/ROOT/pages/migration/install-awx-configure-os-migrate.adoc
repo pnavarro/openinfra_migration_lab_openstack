@@ -259,7 +259,7 @@ used_mapped_networks: false
 os_migrate_configure_network: true
 
 vms_list:
-  - winweb01-user1
+  - winweb01-{guid}
 
 # VMware parameters:
 vcenter_hostname: {vcenter_console}
@@ -307,5 +307,5 @@ Go back to the AWX dashboard.
 == Access to the VM using Horizon
 
 1. Access to Horizon using the URL: https://horizon-openstack.apps.{guid}.dynamic.redhatworkshops.io
-2. In the top panel, Instances, click on the instance: winweb01-user1
+2. In the top panel, Instances, click on the instance: winweb01-{guid}
 3. Click the tab Console to access to the console.

@@ -80,7 +80,7 @@ os_migrate_configure_network: true
 os_migrate_tear_down: false
 
 vms_list:
-  - haproxy-user1
+  - haproxy-{guid}
 EOF
 ----
 
@@ -149,7 +149,7 @@ openstack server list
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 | ID                                   | Name          | Status | Networks                                | Image                    | Flavor                   |
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
-| 77844fc9-1c83-4328-8995-3c9a008e8134 | haproxy-user1 | ACTIVE | private=192.168.100.237, 172.21.0.207 | N/A (booted from volume) | osm-vmware-haproxy-tztc2 |
+| 77844fc9-1c83-4328-8995-3c9a008e8134 | haproxy-{guid} | ACTIVE | private=192.168.100.237, 172.21.0.207 | N/A (booted from volume) | osm-vmware-haproxy-tztc2 |
 | 7fa1709c-4b6e-4adf-8098-f57a0ee43abd | centos10-ch    | ACTIVE | private=192.168.100.196, {rhoso_conversion_host_ip} | centos9-image            | migrate                  |
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 ----
