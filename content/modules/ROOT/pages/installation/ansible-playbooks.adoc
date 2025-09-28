@@ -1,0 +1,114 @@
+= Red Hat OpenStack Services on OpenShift (RHOSO) lab installation using Ansible playbooks
+
+== Overview
+
+This documentation covers the automated deployment of Red Hat OpenStack Services on OpenShift (RHOSO) using Ansible playbooks. The playbooks provide a complete automation solution for deploying RHOSO in a connected environment with SSH jump host connectivity.
+
+=== Credentials Required
+
+* **Red Hat Registry**: Access to registry.redhat.io
+* **Subscription Manager**: RHEL subscription credentials
+
+== Quick Start
+
+=== 1. Clone and Setup
+
+From your workstation, clone the repository:
+
+[source,bash]
+----
+# Clone the repository
+git clone https://github.com/pnavarro/openinfra_migration_lab_openstack.git
+cd openinfra_migration_lab_openstack/ansible-playbooks
+
+# Copy and configure inventory
+cp inventory/hosts.yml.example inventory/hosts.yml
+----
+
+=== 2. Configure Inventory
+
+Edit `inventory/hosts.yml` with your environment details:
+
+[NOTE]
+====
+Fill in the values for registry_username and registry_password, these are the credentials to access the Red Hat registry.
+Fill in the values for rhc_username and rhc_password, these are the credentials to access the Red Hat Customer Portal.
+====
+
+[source,yaml,subs=attributes]
+----
+cat << EOF > inventory/hosts.yml
+
+all:
+  vars:
+    # REQUIRED: Lab Environment Configuration
+    lab_guid: "{guid}"                                 # Replace with your actual lab GUID
+    bastion_user: "lab-user"                          # Usually 'lab-user'
+    bastion_hostname: "{bastion_public_hostname}"       # Replace with your bastion hostname
+    bastion_port: "{bastion_ssh_port}"                            # Replace with your SSH port
+    bastion_password: "{bastion_ssh_password}"        # Replace with your actual password
+    
+    # REQUIRED: OpenShift Console (if you have access)
+    ocp_console_url: "{openshift_cluster_console_url}"
+    ocp_admin_password: "{openshift_cluster_admin_password}"
+    
+    # REQUIRED: Red Hat Registry Service Account Credentials
+    # Get these from: https://access.redhat.com/articles/RegistryAuthentication#creating-registry-service-accounts-6
+    registry_username: "12345678|myserviceaccount"    # Your registry service account
+    registry_password: "eyJhbGciOiJSUzUxMiJ9..."      # Your registry token
+    
+    # REQUIRED: Red Hat Customer Portal Credentials  
+    # Your login credentials for https://access.redhat.com
+    rhc_username: "your-rh-username@email.com"       # Your RH Customer Portal username
+    rhc_password: "YourRHPassword123"                 # Your RH Customer Portal password
+    
+    # OPTIONAL: Internal lab hostnames (usually defaults work)
+    nfs_server_hostname: "nfsserver"                  # Internal NFS server hostname
+    compute_hostname: "compute01"                     # Internal compute node hostname
+    
+    # OPTIONAL: External IP configuration for OpenShift worker nodes
+    # These IPs are used to configure the external network interfaces on OCP worker nodes
+    rhoso_external_ip_worker_1: "{rhoso_external_ip_worker_1}"        # External IP for worker node 1
+    rhoso_external_ip_worker_2: "{rhoso_external_ip_worker_2}"        # External IP for worker node 2
+    rhoso_external_ip_worker_3: "{rhoso_external_ip_worker_3}"        # External IP for worker node 3
+    
+    # OPTIONAL: Network configuration (usually defaults work)
+    rhoso_external_ip_bastion: "{rhoso_external_ip_bastion}"         # External IP for bastion
+
+# All operations run on the bastion host
+bastion:
+  hosts:
+    bastion-jumphost:
+      ansible_host: "{{ bastion_hostname }}"
+      ansible_user: "{{ bastion_user }}"
+      ansible_port: "{{ bastion_port }}"
+      ansible_ssh_pass: "{{ bastion_password }}"
+
+# NFS server operations delegated from bastion
+nfsserver:
+  hosts:
+    nfs-server:
+      ansible_host: "{{ nfs_server_hostname }}"
+      ansible_user: "cloud-user"
+      ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
+      delegate_to: bastion-jumphost
+
+# Compute node operations delegated from bastion  
+compute_nodes:
+  hosts:
+    compute01:
+      ansible_host: "{{ compute_hostname }}"
+      ansible_user: "cloud-user"
+      ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
+      delegate_to: bastion-jumphost
+EOF
+----
+
+=== 3. Deploy RHOSO
+
+Execute the following command to deploy RHOSO:
+
+[source,bash]
+----
+deploy-via-jumphost.sh
+----
