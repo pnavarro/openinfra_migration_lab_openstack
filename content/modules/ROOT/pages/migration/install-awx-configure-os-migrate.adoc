@@ -292,7 +292,7 @@ Go back to the AWX dashboard.
    * **Name:** Windows VM Migration
    * **Inventory:** Conversion Host Inventory
    * **Project:** vmware migration kit project
-   * **Playbook:** `vmware_migration_kit/playbooks/migration.yml`
+   * **Playbook:** `playbooks/migration.yml`
    * **Execution Environment:** vmware migration kit execution environment
    * **Credentials:** Bastion key
    * **Extra Variables:** Copy the content of `/home/lab-user/os-migrate-env/os_migrate_for_awx.yaml` from the bastion

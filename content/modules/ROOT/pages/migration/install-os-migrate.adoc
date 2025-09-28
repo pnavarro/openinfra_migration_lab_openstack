@@ -125,6 +125,12 @@ EOF
 
 == Execute the virtual machine migration
 
+Navigate to the the vcenter console: {vcenter_console} using username: {vcenter_full_user} and password: {vcenter_password}.
+
+image::ha-proxy-power-on.png[Ha-proxy-vm]
+
+Power on the virtual machine haproxy-{guid}
+
 In the bastion, launch the migration:
 
 [source,bash,role=execute,subs=attributes]
@@ -142,6 +148,48 @@ alias openstack="oc exec -t openstackclient -- openstack"
 openstack server list
 ----
 
+Create a floating ip for the ha-proxy VM:
+
+[source,bash,role=execute,subs=attributes]
+----
+openstack floating ip create public
+----
+
+. Sample Output
+
+[source,bash,subs=attributes]
+----
++---------------------+--------------------------------------+
+| Field               | Value                                |
++---------------------+--------------------------------------+
+| created_at          | 2025-09-28T08:20:02Z                 |
+| description         |                                      |
+| dns_domain          |                                      |
+| dns_name            |                                      |
+| fixed_ip_address    | None                                 |
+| floating_ip_address | $FLOATING_IP_HA_PROXY                        |
+| floating_network_id | ea391fc3-52c8-4bba-a6d6-4cf0a81a87f6 |
+| id                  | f0ed05a7-5f8a-4a17-87ae-4f17b46ebdc4 |
+| name                | $FLOATING_IP_HA_PROXY                       |
+| port_details        | None                                 |
+| port_forwardings    | []                                   |
+| port_id             | None                                 |
+| project_id          | 1a9affc7161949009e43cb13dfb17307     |
+| qos_policy_id       | None                                 |
+| revision_number     | 0                                    |
+| router_id           | None                                 |
+| status              | DOWN                                 |
+| subnet_id           | None                                 |
+| tags                | []                                   |
+| updated_at          | 2025-09-28T08:20:02Z                 |
++---------------------+--------------------------------------+
+----
+
+[source,bash,role=execute,subs=attributes]
+----
+openstack server add floating ip haproxy-{guid} $FLOATING_IP_HA_PROXY
+----
+
 . Sample Output
 
 [source,bash,subs=attributes]
@@ -149,8 +197,8 @@ openstack server list
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 | ID                                   | Name          | Status | Networks                                | Image                    | Flavor                   |
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
-| 77844fc9-1c83-4328-8995-3c9a008e8134 | haproxy-{guid} | ACTIVE | private=192.168.100.237, 172.21.0.207 | N/A (booted from volume) | osm-vmware-haproxy-tztc2 |
-| 7fa1709c-4b6e-4adf-8098-f57a0ee43abd | centos10-ch    | ACTIVE | private=192.168.100.196, {rhoso_conversion_host_ip} | centos9-image            | migrate                  |
+| 77844fc9-1c83-4328-8995-3c9a008e8134 | haproxy-{guid} | ACTIVE | private=10.0.0.25, FLOATING_IP | N/A (booted from volume) | osm-vmware-haproxy-tztc2 |
+| 7fa1709c-4b6e-4adf-8098-f57a0ee43abd | centos10-ch    | ACTIVE | private=10.0.0.27, {rhoso_conversion_host_ip} | centos9-image            | migrate                  |
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 ----
 
@@ -158,8 +206,8 @@ Ping the migrated VM:
 
 [source,bash]
 ----
-ping 172.21.0.207
-PING 172.21.0.207 (172.21.0.207) 56(84) bytes of data.
-64 bytes from 172.21.0.207: icmp_seq=1 ttl=63 time=1.41 ms
-64 bytes from 172.21.0.207: icmp_seq=2 ttl=63 time=0.792 ms
+ping $FLOATING_IP
+PING $FLOATING_IP (FLOATING_IP) 56(84) bytes of data.
+64 bytes from $FLOATING_IP: icmp_seq=1 ttl=63 time=1.41 ms
+64 bytes from $FLOATING_IP: icmp_seq=2 ttl=63 time=0.792 ms
 ----

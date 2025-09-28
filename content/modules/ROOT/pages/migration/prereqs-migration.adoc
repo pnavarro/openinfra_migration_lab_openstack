@@ -37,7 +37,7 @@ Create networks and security groups if you didn't create it when installing RHOS
 ----
 export GATEWAY=192.168.0.1
 export PUBLIC_NETWORK_CIDR=192.168.0.0/16
-export PRIVATE_NETWORK_CIDR=192.168.100.0/24
+export PRIVATE_NETWORK_CIDR=10.0.0.0/24
 export PUBLIC_NET_START={rhoso_public_net_start}
 export PUBLIC_NET_END={rhoso_public_net_end}
 export DNS_SERVER=8.8.8.8
