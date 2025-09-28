@@ -15,6 +15,17 @@ Then we will go through a virtual machine migration from Vmware vCenter to the R
 Within the lab environment, you will be able to copy and paste the specified commands into the CLI.
 For some steps you may also need to edit some of the commands from the  instructions.
 
+== os-migrate vmware migration kit
+
+The os-migrate vmware migration kit, delivered as an Ansible collection, comes with a powerful set of features designed to streamline and scale your migration efforts:
+
+* **Discovery mode**: automatically gathers metadata from VMware vCenter, including VM definitions, network configurations, and storage details.
+* **Network mapping**: supports mapping of source networks and ports to target Red Hat OpenStack Services on OpenShift networks, including MAC address preservation.
+* **Flavor mapping and flavor creation**: enables mapping VMware hardware profiles to OpenStack flavors or dynamically creates matching flavors during migration.
+* **Warm VM migration support**: migrates running virtual machines with minimal disruption by leveraging snapshot and CBT-based mechanisms.
+* **Multi-disk and multi-NIC support**: fully supports virtual machines with complex storage and networking setups, ensuring consistent and complete migration.
+* **Operating system compatibility**: supports a broad range of guest OSes compatible with virt-v2v.
+
 == Access Your Lab Environment
 
 . Access to the bastion executing the following command: 
