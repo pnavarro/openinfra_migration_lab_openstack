@@ -126,7 +126,7 @@ test_ssh_connectivity() {
     local node_name="$1"
     local target_ip="$2"
     
-    print_info "Testing SSH connectivity from node: $node_name to $target_ip:$SSH_PORT"
+    print_info "Testing SSH connectivity from node: $node_name to $target_ip:$SSH_PORT" >&2
     
     # Create debug pod and test connectivity
     local result
@@ -135,10 +135,10 @@ test_ssh_connectivity() {
     " 2>/dev/null | tail -1)
     
     if [[ "$result" == "SUCCESS" ]]; then
-        print_success "Node $node_name can reach $target_ip:$SSH_PORT"
+        print_success "Node $node_name can reach $target_ip:$SSH_PORT" >&2
         return 0
     else
-        print_warning "Node $node_name cannot reach $target_ip:$SSH_PORT"
+        print_warning "Node $node_name cannot reach $target_ip:$SSH_PORT" >&2
         return 1
     fi
 }
@@ -149,7 +149,7 @@ find_accessible_node() {
     local nodes="$2"
     local accessible_node=""
     
-    print_info "Testing SSH connectivity from all nodes to $target_ip..."
+    print_info "Testing SSH connectivity from all nodes to $target_ip..." >&2
     
     while IFS= read -r node; do
         [[ -z "$node" ]] && continue
@@ -161,7 +161,7 @@ find_accessible_node() {
     done <<< "$nodes"
     
     if [[ -z "$accessible_node" ]]; then
-        print_error "No OpenShift node can reach $target_ip:$SSH_PORT"
+        print_error "No OpenShift node can reach $target_ip:$SSH_PORT" >&2
         exit 1
     fi
     
