@@ -14,9 +14,18 @@ EOF
 cp scripts/credentials.yml.example scripts/credentials.yml
 # Edit credentials.yml with your Red Hat credentials
 
-# 3. Deploy all labs
+# 3. Deploy all labs FROM YOUR LOCAL MACHINE
 ./scripts/deploy_multiple_labs.sh --credentials scripts/credentials.yml my_labs.txt
 ```
+
+## 🏗️ **Execution Model**
+
+**Important:** This script now runs **FROM YOUR LOCAL MACHINE** and connects to multiple bastion hosts, just like `deploy-via-jumphost.sh`. This solves Python library dependency issues and follows the original design pattern.
+
+- ✅ **Local Execution**: Runs on your workstation/laptop
+- ✅ **Remote Connection**: Connects to multiple bastion hosts via SSH
+- ✅ **No Dependencies on Bastion**: No need to install Python libraries on bastion hosts
+- ✅ **Parallel Deployment**: Deploys multiple labs simultaneously
 
 ## ✅ Prerequisites Check
 

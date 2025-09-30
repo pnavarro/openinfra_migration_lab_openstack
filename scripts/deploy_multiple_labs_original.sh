@@ -1,7 +1,6 @@
 #!/bin/bash
-# Multi-Lab RHOSO Deployment Script (Local Execution Model)
-# This script runs from your LOCAL MACHINE and connects to multiple bastion hosts
-# Similar to deploy-via-jumphost.sh but for multiple labs simultaneously
+# Multi-Lab RHOSO Deployment Script
+# This script orchestrates the deployment of multiple RHOSO labs based on a configuration file
 
 set -euo pipefail
 
@@ -58,8 +57,7 @@ print_progress() {
 show_usage() {
     echo "Usage: $0 [OPTIONS] <lab_config_file>"
     echo ""
-    echo "Deploy multiple RHOSO labs from your LOCAL MACHINE to multiple bastion hosts."
-    echo "This script behaves like deploy-via-jumphost.sh but for multiple labs."
+    echo "Deploy multiple RHOSO labs based on a configuration file."
     echo ""
     echo "Arguments:"
     echo "  lab_config_file         Path to the lab configuration file"
@@ -100,19 +98,19 @@ show_usage() {
     echo "  $0 --credentials creds.yml labs_to_be_deployed  # Use credentials file"
 }
 
-# Function to check prerequisites (LOCAL MACHINE)
+# Function to check prerequisites (enhanced like deploy-via-jumphost.sh)
 check_prerequisites() {
-    print_status "Checking prerequisites on LOCAL MACHINE..."
+    print_status "Checking prerequisites..."
     
     # Check if Python 3 is installed
     if ! command -v python3 &> /dev/null; then
-        print_error "Python 3 is not installed on your local machine. Please install Python 3."
+        print_error "Python 3 is not installed. Please install Python 3."
         exit 1
     fi
     
     # Check if ansible is installed
     if ! command -v ansible &> /dev/null; then
-        print_error "Ansible is not installed on your local machine. Please install Ansible 2.12 or newer."
+        print_error "Ansible is not installed. Please install Ansible 2.12 or newer."
         exit 1
     fi
     
@@ -122,7 +120,8 @@ check_prerequisites() {
     
     # Check if required Python modules are available
     if ! python3 -c "import yaml" &> /dev/null; then
-        print_warning "PyYAML not available. YAML parsing will be limited."
+        print_error "PyYAML is not installed. Please install it: pip3 install PyYAML"
+        exit 1
     fi
     
     # Check if parser script exists
@@ -147,9 +146,9 @@ check_prerequisites() {
     print_status "Prerequisites check passed!"
 }
 
-# Function to install required collections (LOCAL MACHINE)
+# Function to install required collections globally (like deploy-via-jumphost.sh)
 install_collections() {
-    print_status "Installing required Ansible collections on LOCAL MACHINE..."
+    print_status "Installing required Ansible collections globally..."
     
     cd "$ANSIBLE_DIR"
     
@@ -243,26 +242,13 @@ def update_inventory_credentials(inventory_file, credentials_file):
     # Update credentials in inventory
     updated = False
     for key, value in creds.items():
-        # Escape special characters for JSON/YAML
+        # Escape special characters for JSON
         escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
-        # Handle both JSON and YAML formats
-        patterns = [
-            f'{key}: "[^"]*"',  # JSON format
-            f"{key}: '[^']*'",  # YAML single quotes
-            f'{key}: [^\\n]*$'  # YAML unquoted
-        ]
-        
-        for pattern in patterns:
-            if re.search(pattern, content, re.MULTILINE):
-                if '"' in content and f'{key}:' in content:
-                    replacement = f'{key}: "{escaped_value}"'
-                elif "'" in content and f'{key}:' in content:
-                    replacement = f"{key}: '{escaped_value}'"
-                else:
-                    replacement = f'{key}: {escaped_value}'
-                content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
-                updated = True
-                break
+        pattern = f'{key}: "[^"]*"'
+        replacement = f'{key}: "{escaped_value}"'
+        if re.search(pattern, content):
+            content = re.sub(pattern, replacement, content)
+            updated = True
     
     # Write back if updated
     if updated:
@@ -296,7 +282,7 @@ PYTHON_EOF
     rm -f /tmp/credentials_updater.py
 }
 
-# Function to check individual inventory configuration
+# Function to check individual inventory configuration (similar to deploy-via-jumphost.sh)
 check_inventory_file() {
     local inventory_file="$1"
     local lab_guid="$2"
@@ -320,23 +306,10 @@ check_inventory_file() {
         return 1
     fi
     
-    # Extract connection details
-    local bastion_host bastion_port bastion_user
-    
-    # Handle both JSON and YAML formats
-    if grep -q '"bastion_hostname"' "$inventory_file"; then
-        # JSON format
-        bastion_host=$(grep '"bastion_hostname"' "$inventory_file" | sed 's/.*"bastion_hostname": *"\([^"]*\)".*/\1/')
-        bastion_port=$(grep '"bastion_port"' "$inventory_file" | sed 's/.*"bastion_port": *"\([^"]*\)".*/\1/')
-        bastion_user=$(grep '"bastion_user"' "$inventory_file" | sed 's/.*"bastion_user": *"\([^"]*\)".*/\1/')
-    else
-        # YAML format
-        bastion_host=$(grep "bastion_hostname:" "$inventory_file" | sed "s/.*bastion_hostname: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
-        bastion_port=$(grep "bastion_port:" "$inventory_file" | sed "s/.*bastion_port: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
-        bastion_user=$(grep "bastion_user:" "$inventory_file" | sed "s/.*bastion_user: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
-    fi
-    
-    [[ -z "$bastion_user" ]] && bastion_user="lab-user"
+    # Test SSH connectivity to bastion (if possible)
+    local bastion_host=$(grep "bastion_hostname:" "$inventory_file" | cut -d'"' -f2)
+    local bastion_port=$(grep "bastion_port:" "$inventory_file" | cut -d'"' -f2)
+    local bastion_user=$(grep "bastion_user:" "$inventory_file" | cut -d'"' -f2 || echo "lab-user")
     
     if [[ "$bastion_host" == *"example.com"* ]]; then
         print_warning "Lab $lab_guid: Bastion hostname still contains 'example.com'. Please update it."
@@ -350,7 +323,7 @@ check_inventory_file() {
             print_status "✅ Lab $lab_guid: Bastion connectivity test passed"
         else
             print_warning "⚠️  Lab $lab_guid: Bastion connectivity test failed (may be due to firewall/network)"
-            print_warning "    This may not prevent deployment if bastion is accessible from your machine"
+            print_warning "    This may not prevent deployment if bastion is accessible from Ansible control node"
         fi
     fi
     
@@ -359,7 +332,7 @@ check_inventory_file() {
     return 0
 }
 
-# Function to validate inventory files
+# Function to validate inventory files with enhanced checks
 validate_inventories() {
     print_status "Validating generated inventory files..."
     
@@ -398,7 +371,7 @@ validate_inventories() {
     return 0
 }
 
-# Function to deploy a single lab (LOCAL EXECUTION MODEL)
+# Function to deploy a single lab
 deploy_lab() {
     local inventory_file="$1"
     local lab_guid="$2"
@@ -412,9 +385,9 @@ deploy_lab() {
     print_lab "Log file: $log_file"
     
     # Prepare ansible options
-    local ansible_opts="-i \"$inventory_file\""
+    local ansible_opts=""
     if [[ "$dry_run" == "true" ]]; then
-        ansible_opts="$ansible_opts --check --diff"
+        ansible_opts="--check --diff"
     fi
     
     if [[ "$verbose" == "true" ]]; then
@@ -424,45 +397,23 @@ deploy_lab() {
     # Change to ansible directory
     cd "$ANSIBLE_DIR"
     
-    # Run the deployment (similar to deploy-via-jumphost.sh)
+    # Collections are installed globally, so we can skip per-lab installation
+    print_lab "[$lab_guid] Using globally installed Ansible collections"
+    
+    # Run the deployment
     local start_time=$(date +%s)
     print_lab "[$lab_guid] Starting $phase deployment..."
     
     local playbook_cmd
     case "$phase" in
-        "prerequisites")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml --tags prerequisites"
-            ;;
-        "install-operators")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml --tags install-operators"
-            ;;
-        "security")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml --tags security"
-            ;;
-        "nfs-server")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml --tags nfs-server"
-            ;;
-        "network-isolation")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml --tags network-isolation"
-            ;;
-        "control-plane")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml --tags control-plane"
-            ;;
-        "data-plane")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml --tags data-plane"
-            ;;
-        "validation")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml --tags validation"
-            ;;
         "full")
-            playbook_cmd="ansible-playbook $ansible_opts site.yml"
+            playbook_cmd="ansible-playbook -i \"$inventory_file\" site.yml $ansible_opts"
             ;;
         "optional")
-            playbook_cmd="ansible-playbook $ansible_opts optional-services.yml"
+            playbook_cmd="ansible-playbook -i \"$inventory_file\" optional-services.yml $ansible_opts"
             ;;
         *)
-            print_error "Unknown phase: $phase"
-            return 1
+            playbook_cmd="ansible-playbook -i \"$inventory_file\" site.yml --tags \"$phase\" $ansible_opts"
             ;;
     esac
     
@@ -486,7 +437,6 @@ deploy_all_labs() {
     local max_jobs="$4"
     
     print_header "Starting deployment of all labs (phase: $phase, max parallel jobs: $max_jobs)"
-    print_status "Running from LOCAL MACHINE, connecting to multiple bastion hosts"
     
     local inventory_files=("$GENERATED_INVENTORIES_DIR"/hosts-cluster-*.yml)
     local total_labs=${#inventory_files[@]}
@@ -711,14 +661,13 @@ main() {
         exit 0
     fi
     
-    print_header "Multi-Lab RHOSO Deployment (Local Execution Model)"
+    print_header "Multi-Lab RHOSO Deployment"
     print_status "Timestamp: $(date)"
     print_status "Configuration file: $config_file"
     print_status "Deployment phase: $DEPLOYMENT_PHASE"
     print_status "Max parallel jobs: $MAX_PARALLEL_JOBS"
     print_status "Dry run: $DRY_RUN"
     print_status "Verbose: $VERBOSE"
-    print_status "Execution model: LOCAL MACHINE → Multiple Bastion Hosts"
     
     check_prerequisites
     setup_directories
@@ -748,7 +697,7 @@ main() {
         exit 0
     fi
     
-    # Install required Ansible collections on LOCAL MACHINE
+    # Install required Ansible collections globally
     install_collections
     
     # Deploy all labs
@@ -763,3 +712,4 @@ main() {
 
 # Run main function with all arguments
 main "$@"
+
