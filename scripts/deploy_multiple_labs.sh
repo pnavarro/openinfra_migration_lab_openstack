@@ -152,6 +152,9 @@ parse_lab_config() {
         exit 1
     fi
     
+    # Convert to absolute path before changing directories
+    config_file="$(realpath "$config_file")"
+    
     # Change to the ansible directory to run the parser
     cd "$ANSIBLE_DIR"
     
@@ -175,55 +178,79 @@ update_credentials() {
     
     print_status "Updating inventory files with credentials from: $credentials_file"
     
-    # Parse credentials file (assuming YAML format)
-    local registry_username registry_password rhc_username rhc_password
+    # Copy the Python updater script to a temporary location
+    cat > /tmp/credentials_updater.py << 'PYTHON_EOF'
+#!/usr/bin/env python3
+import sys
+import re
+
+def update_inventory_credentials(inventory_file, credentials_file):
+    # Read credentials
+    creds = {}
+    try:
+        with open(credentials_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if ':' in line and not line.startswith('#'):
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"')
+                    if value and not value.startswith('REPLACE_WITH'):
+                        creds[key] = value
+    except Exception as e:
+        return False
     
-    if command -v yq &> /dev/null; then
-        registry_username=$(yq eval '.registry_username' "$credentials_file" 2>/dev/null || echo "")
-        registry_password=$(yq eval '.registry_password' "$credentials_file" 2>/dev/null || echo "")
-        rhc_username=$(yq eval '.rhc_username' "$credentials_file" 2>/dev/null || echo "")
-        rhc_password=$(yq eval '.rhc_password' "$credentials_file" 2>/dev/null || echo "")
-    else
-        # Fallback to Python parsing
-        local creds_data=$(python3 -c "
-import yaml
-with open('$credentials_file', 'r') as f:
-    data = yaml.safe_load(f)
-    print(f\"{data.get('registry_username', '')}\")
-    print(f\"{data.get('registry_password', '')}\")
-    print(f\"{data.get('rhc_username', '')}\")
-    print(f\"{data.get('rhc_password', '')}\")
-" 2>/dev/null || echo -e "\n\n\n")
-        
-        registry_username=$(echo "$creds_data" | sed -n '1p')
-        registry_password=$(echo "$creds_data" | sed -n '2p')
-        rhc_username=$(echo "$creds_data" | sed -n '3p')
-        rhc_password=$(echo "$creds_data" | sed -n '4p')
-    fi
+    if not creds:
+        return True
     
-    # Update all inventory files
+    # Read inventory file
+    try:
+        with open(inventory_file, 'r') as f:
+            content = f.read()
+    except Exception as e:
+        return False
+    
+    # Update credentials in inventory
+    updated = False
+    for key, value in creds.items():
+        # Escape special characters for JSON
+        escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
+        pattern = f'{key}: "[^"]*"'
+        replacement = f'{key}: "{escaped_value}"'
+        if re.search(pattern, content):
+            content = re.sub(pattern, replacement, content)
+            updated = True
+    
+    # Write back if updated
+    if updated:
+        try:
+            with open(inventory_file, 'w') as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            return False
+    return True
+
+if __name__ == '__main__':
+    if len(sys.argv) != 3:
+        sys.exit(1)
+    success = update_inventory_credentials(sys.argv[1], sys.argv[2])
+    sys.exit(0 if success else 1)
+PYTHON_EOF
+    
+    # Update all inventory files using the Python script
     for inventory_file in "$GENERATED_INVENTORIES_DIR"/hosts-cluster-*.yml; do
         if [[ -f "$inventory_file" ]]; then
             print_status "Updating credentials in: $(basename "$inventory_file")"
             
-            # Use sed to update the credentials (be careful with special characters)
-            if [[ -n "$registry_username" ]]; then
-                sed -i.bak "s|registry_username: \".*\"|registry_username: \"$registry_username\"|" "$inventory_file"
+            if ! python3 /tmp/credentials_updater.py "$inventory_file" "$credentials_file"; then
+                print_warning "Failed to update credentials in $(basename "$inventory_file")"
             fi
-            if [[ -n "$registry_password" ]]; then
-                sed -i.bak "s|registry_password: \".*\"|registry_password: \"$registry_password\"|" "$inventory_file"
-            fi
-            if [[ -n "$rhc_username" ]]; then
-                sed -i.bak "s|rhc_username: \".*\"|rhc_username: \"$rhc_username\"|" "$inventory_file"
-            fi
-            if [[ -n "$rhc_password" ]]; then
-                sed -i.bak "s|rhc_password: \".*\"|rhc_password: \"$rhc_password\"|" "$inventory_file"
-            fi
-            
-            # Remove backup files
-            rm -f "${inventory_file}.bak"
         fi
     done
+    
+    # Clean up
+    rm -f /tmp/credentials_updater.py
 }
 
 # Function to validate inventory files
