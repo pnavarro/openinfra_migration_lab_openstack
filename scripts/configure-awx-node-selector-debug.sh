@@ -107,8 +107,6 @@ check_prerequisites() {
 
 # Function to get OpenShift nodes
 get_openshift_nodes() {
-    print_info "Getting OpenShift nodes..."
-    
     local nodes
     nodes=$(oc get nodes --no-headers -o custom-columns=NAME:.metadata.name 2>/dev/null) || {
         print_error "Failed to get OpenShift nodes"
@@ -408,6 +406,7 @@ main() {
     echo
     
     # Get OpenShift nodes
+    print_info "Getting OpenShift nodes..."
     local nodes
     nodes=$(get_openshift_nodes)
     print_success "Found $(echo "$nodes" | wc -l) OpenShift nodes"
