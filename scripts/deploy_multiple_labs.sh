@@ -545,9 +545,14 @@ def extract_labs(content):
             service_name = service_blocks[i].strip()
             service_content = service_blocks[i + 1]
             
-            # Extract GUID
-            guid_match = re.search(r'-(\w+)$', service_name)
-            guid = guid_match.group(1) if guid_match else 'unknown'
+            # Extract GUID from YAML data section (preferred method)
+            yaml_guid_match = re.search(r'guid:\s*(\w+)', service_content)
+            if yaml_guid_match:
+                guid = yaml_guid_match.group(1)
+            else:
+                # Fallback: Extract GUID from service name
+                guid_match = re.search(r'-(\w+)$', service_name)
+                guid = guid_match.group(1) if guid_match else 'unknown'
             
             # Extract bastion info
             ssh_match = re.search(r'ssh lab-user@(\S+) -p (\d+)', service_content)

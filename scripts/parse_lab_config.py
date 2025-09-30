@@ -58,7 +58,7 @@ class LabConfigParser:
         """Parse a single service block and extract configuration."""
         config = {
             'service_name': service_name,
-            'lab_guid': self._extract_guid(service_name),
+            'lab_guid': '',  # Will be set from YAML data
         }
         
         # Extract basic information
@@ -67,10 +67,17 @@ class LabConfigParser:
         # Extract IP allocation details
         config.update(self._extract_ip_allocation(content))
         
-        # Extract YAML data section
+        # Extract YAML data section (this contains the real GUID)
         yaml_data = self._extract_yaml_data(content)
         if yaml_data:
             config.update(yaml_data)
+        
+        # Use the GUID from YAML data if available, otherwise fall back to service name extraction
+        if 'guid' in config:
+            config['lab_guid'] = config['guid']
+        else:
+            # Fallback to extracting from service name
+            config['lab_guid'] = self._extract_guid(service_name)
         
         return config
     
@@ -158,22 +165,60 @@ class LabConfigParser:
     
     def _extract_yaml_data(self, content: str) -> Dict[str, Any]:
         """Extract YAML data section if present."""
+        yaml_data = {}
+        
         # Look for the Data section which contains YAML
         yaml_match = re.search(r'Data\s*\n(openshift-cnv\.osp-on-ocp-cnv\.(?:dev|prod):.*?)(?=\n\S|\Z)', content, re.DOTALL)
-        if yaml_match and YAML_AVAILABLE:
-            try:
-                yaml_content = yaml_match.group(1)
-                # Parse the YAML content
-                yaml_data = yaml.safe_load(yaml_content)
-                if isinstance(yaml_data, dict):
-                    # Look for either dev or prod key
-                    for key in yaml_data:
-                        if 'openshift-cnv.osp-on-ocp-cnv' in key:
-                            return yaml_data[key]
-            except Exception as e:
-                print(f"Warning: Failed to parse YAML data: {e}")
+        if yaml_match:
+            yaml_content = yaml_match.group(1)
+            
+            if YAML_AVAILABLE:
+                try:
+                    # Parse the YAML content using PyYAML
+                    parsed_yaml = yaml.safe_load(yaml_content)
+                    if isinstance(parsed_yaml, dict):
+                        # Look for either dev or prod key
+                        for key in parsed_yaml:
+                            if 'openshift-cnv.osp-on-ocp-cnv' in key:
+                                return parsed_yaml[key]
+                except Exception as e:
+                    print(f"Warning: Failed to parse YAML data with PyYAML: {e}")
+                    # Fall through to regex parsing
+            
+            # Fallback: Extract key fields using regex (works without PyYAML)
+            yaml_data.update(self._extract_yaml_fields_with_regex(yaml_content))
         
-        return {}
+        return yaml_data
+    
+    def _extract_yaml_fields_with_regex(self, yaml_content: str) -> Dict[str, Any]:
+        """Extract key YAML fields using regex when PyYAML is not available."""
+        fields = {}
+        
+        # Define patterns for key fields we need
+        patterns = [
+            ('guid', r'guid:\s*(\w+)'),
+            ('bastion_public_hostname', r'bastion_public_hostname:\s*(\S+)'),
+            ('bastion_ssh_port', r'bastion_ssh_port:\s*[\'"]?(\d+)[\'"]?'),
+            ('bastion_ssh_password', r'bastion_ssh_password:\s*(\S+)'),
+            ('bastion_ssh_user_name', r'bastion_ssh_user_name:\s*(\S+)'),
+            ('openshift_cluster_admin_password', r'openshift_cluster_admin_password:\s*(\S+)'),
+            ('openshift_console_url', r'openshift_console_url:\s*>\s*\n\s*(\S+)'),
+            ('openshift_api_url', r'openshift_api_url:\s*(\S+)'),
+            ('rhoso_conversion_host_ip', r'rhoso_conversion_host_ip:\s*([\d.]+)'),
+            ('rhoso_external_ip_bastion', r'rhoso_external_ip_bastion:\s*([\d.]+)'),
+            ('rhoso_external_ip_worker_1', r'rhoso_external_ip_worker_1:\s*([\d.]+)'),
+            ('rhoso_external_ip_worker_2', r'rhoso_external_ip_worker_2:\s*([\d.]+)'),
+            ('rhoso_external_ip_worker_3', r'rhoso_external_ip_worker_3:\s*([\d.]+)'),
+            ('rhoso_public_net_start', r'rhoso_public_net_start:\s*([\d.]+)'),
+            ('rhoso_public_net_end', r'rhoso_public_net_end:\s*([\d.]+)'),
+        ]
+        
+        for field_name, pattern in patterns:
+            match = re.search(pattern, yaml_content)
+            if match:
+                fields[field_name] = match.group(1)
+        
+        return fields
     
     def generate_inventory_config(self, lab_config: Dict[str, Any]) -> Dict[str, Any]:
         """Generate Ansible inventory configuration for a lab."""
