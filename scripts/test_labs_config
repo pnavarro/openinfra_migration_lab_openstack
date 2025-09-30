@@ -1,0 +1,83 @@
+Service	Assigned Email	Details
+openshift-cnv.osp-on-ocp-cnv.dev-test1	
+- unassigned -
+
+Lab UI
+https://showroom-showroom.apps.cluster-test1.example.com/ 
+Messages
+OpenShift Console: https://console-openshift-console.apps.cluster-test1.example.com
+OpenShift API for command line 'oc' client: https://api.cluster-test1.example.com:6443
+
+RHOSO External IP Allocation Details:
+=======================================
+
+Allocation Name: cluster-test1
+Cluster: ocpvtest01
+Network Subnet: 192.168.0.0/24
+Network CIDR: 192.168.0.0/24
+
+Allocated IP Addresses:
+EXTERNAL_IP_WORKER_1=192.168.1.10
+EXTERNAL_IP_WORKER_2=192.168.1.11
+EXTERNAL_IP_WORKER_3=192.168.1.12
+EXTERNAL_IP_BASTION=192.168.1.13
+PUBLIC_NET_START=192.168.1.20
+PUBLIC_NET_END=192.168.1.30
+CONVERSION_HOST_IP=192.168.1.25
+
+User admin with password TestPassword123 is cluster admin.
+You can access your bastion via SSH:
+ssh lab-user@ssh.example.com -p 30001
+
+Enter ssh password when prompted: TestSSHPassword
+
+Data
+openshift-cnv.osp-on-ocp-cnv.dev:
+  bastion_public_hostname: ssh.example.com
+  bastion_ssh_command: ssh lab-user@ssh.example.com -p 30001
+  bastion_ssh_password: TestSSHPassword
+  bastion_ssh_port: '30001'
+  bastion_ssh_user_name: lab-user
+  guid: test1
+  openshift_cluster_admin_password: TestPassword123
+openshift-cnv.osp-on-ocp-cnv.dev-test2	
+- unassigned -
+
+Lab UI
+https://showroom-showroom.apps.cluster-test2.example.com/ 
+Messages
+OpenShift Console: https://console-openshift-console.apps.cluster-test2.example.com
+OpenShift API for command line 'oc' client: https://api.cluster-test2.example.com:6443
+
+RHOSO External IP Allocation Details:
+=======================================
+
+Allocation Name: cluster-test2
+Cluster: ocpvtest01
+Network Subnet: 192.168.0.0/24
+Network CIDR: 192.168.0.0/24
+
+Allocated IP Addresses:
+EXTERNAL_IP_WORKER_1=192.168.2.10
+EXTERNAL_IP_WORKER_2=192.168.2.11
+EXTERNAL_IP_WORKER_3=192.168.2.12
+EXTERNAL_IP_BASTION=192.168.2.13
+PUBLIC_NET_START=192.168.2.20
+PUBLIC_NET_END=192.168.2.30
+CONVERSION_HOST_IP=192.168.2.25
+
+User admin with password TestPassword456 is cluster admin.
+You can access your bastion via SSH:
+ssh lab-user@ssh.example.com -p 30002
+
+Enter ssh password when prompted: TestSSHPassword2
+
+Data
+openshift-cnv.osp-on-ocp-cnv.dev:
+  bastion_public_hostname: ssh.example.com
+  bastion_ssh_command: ssh lab-user@ssh.example.com -p 30002
+  bastion_ssh_password: TestSSHPassword2
+  bastion_ssh_port: '30002'
+  bastion_ssh_user_name: lab-user
+  guid: test2
+  openshift_cluster_admin_password: TestPassword456

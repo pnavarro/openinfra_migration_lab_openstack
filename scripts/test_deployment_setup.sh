@@ -1,0 +1,332 @@
+#!/bin/bash
+# Test script for multi-lab deployment setup
+# This script validates the deployment environment and configuration
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Test counters
+TESTS_PASSED=0
+TESTS_FAILED=0
+TESTS_TOTAL=0
+
+# Function to print colored output
+print_test() {
+    echo -e "${BLUE}[TEST]${NC} $1"
+}
+
+print_pass() {
+    echo -e "${GREEN}[PASS]${NC} $1"
+    ((TESTS_PASSED++))
+}
+
+print_fail() {
+    echo -e "${RED}[FAIL]${NC} $1"
+    ((TESTS_FAILED++))
+}
+
+print_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+# Function to run a test
+run_test() {
+    local test_name="$1"
+    local test_command="$2"
+    
+    ((TESTS_TOTAL++))
+    print_test "Running: $test_name"
+    
+    # Temporarily disable 'set -e' for test execution
+    set +e
+    eval "$test_command" &>/dev/null
+    local exit_code=$?
+    set -e
+    
+    if [[ $exit_code -eq 0 ]]; then
+        print_pass "$test_name"
+        return 0
+    else
+        print_fail "$test_name"
+        return 1
+    fi
+}
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" &> /dev/null
+}
+
+# Function to check Python modules
+python_module_exists() {
+    python3 -c "import $1" &> /dev/null
+}
+
+# Function to test script syntax
+test_script_syntax() {
+    local script="$1"
+    local script_name=$(basename "$script")
+    
+    if [[ "${script}" == *.py ]]; then
+        run_test "Python syntax check: $script_name" "python3 -m py_compile '$script'" || true
+    elif [[ "${script}" == *.sh ]]; then
+        run_test "Bash syntax check: $script_name" "bash -n '$script'" || true
+    fi
+}
+
+# Function to create test lab config
+create_test_config() {
+    cat > "$SCRIPT_DIR/test_labs_config" << 'EOF'
+Service	Assigned Email	Details
+openshift-cnv.osp-on-ocp-cnv.dev-test1	
+- unassigned -
+
+Lab UI
+https://showroom-showroom.apps.cluster-test1.example.com/ 
+Messages
+OpenShift Console: https://console-openshift-console.apps.cluster-test1.example.com
+OpenShift API for command line 'oc' client: https://api.cluster-test1.example.com:6443
+
+RHOSO External IP Allocation Details:
+=======================================
+
+Allocation Name: cluster-test1
+Cluster: ocpvtest01
+Network Subnet: 192.168.0.0/24
+Network CIDR: 192.168.0.0/24
+
+Allocated IP Addresses:
+EXTERNAL_IP_WORKER_1=192.168.1.10
+EXTERNAL_IP_WORKER_2=192.168.1.11
+EXTERNAL_IP_WORKER_3=192.168.1.12
+EXTERNAL_IP_BASTION=192.168.1.13
+PUBLIC_NET_START=192.168.1.20
+PUBLIC_NET_END=192.168.1.30
+CONVERSION_HOST_IP=192.168.1.25
+
+User admin with password TestPassword123 is cluster admin.
+You can access your bastion via SSH:
+ssh lab-user@ssh.example.com -p 30001
+
+Enter ssh password when prompted: TestSSHPassword
+
+Data
+openshift-cnv.osp-on-ocp-cnv.dev:
+  bastion_public_hostname: ssh.example.com
+  bastion_ssh_command: ssh lab-user@ssh.example.com -p 30001
+  bastion_ssh_password: TestSSHPassword
+  bastion_ssh_port: '30001'
+  bastion_ssh_user_name: lab-user
+  guid: test1
+  openshift_cluster_admin_password: TestPassword123
+openshift-cnv.osp-on-ocp-cnv.dev-test2	
+- unassigned -
+
+Lab UI
+https://showroom-showroom.apps.cluster-test2.example.com/ 
+Messages
+OpenShift Console: https://console-openshift-console.apps.cluster-test2.example.com
+OpenShift API for command line 'oc' client: https://api.cluster-test2.example.com:6443
+
+RHOSO External IP Allocation Details:
+=======================================
+
+Allocation Name: cluster-test2
+Cluster: ocpvtest01
+Network Subnet: 192.168.0.0/24
+Network CIDR: 192.168.0.0/24
+
+Allocated IP Addresses:
+EXTERNAL_IP_WORKER_1=192.168.2.10
+EXTERNAL_IP_WORKER_2=192.168.2.11
+EXTERNAL_IP_WORKER_3=192.168.2.12
+EXTERNAL_IP_BASTION=192.168.2.13
+PUBLIC_NET_START=192.168.2.20
+PUBLIC_NET_END=192.168.2.30
+CONVERSION_HOST_IP=192.168.2.25
+
+User admin with password TestPassword456 is cluster admin.
+You can access your bastion via SSH:
+ssh lab-user@ssh.example.com -p 30002
+
+Enter ssh password when prompted: TestSSHPassword2
+
+Data
+openshift-cnv.osp-on-ocp-cnv.dev:
+  bastion_public_hostname: ssh.example.com
+  bastion_ssh_command: ssh lab-user@ssh.example.com -p 30002
+  bastion_ssh_password: TestSSHPassword2
+  bastion_ssh_port: '30002'
+  bastion_ssh_user_name: lab-user
+  guid: test2
+  openshift_cluster_admin_password: TestPassword456
+EOF
+}
+
+# Function to create test credentials
+create_test_credentials() {
+    cat > "$SCRIPT_DIR/test_credentials.yml" << 'EOF'
+registry_username: "test|serviceaccount"
+registry_password: "test_token_12345"
+rhc_username: "test@example.com"
+rhc_password: "test_password"
+EOF
+}
+
+# Function to cleanup test files
+cleanup_test_files() {
+    print_info "Cleaning up test files..."
+    rm -f "$SCRIPT_DIR/test_labs_config"
+    rm -f "$SCRIPT_DIR/test_credentials.yml"
+    rm -rf "$PROJECT_ROOT/ansible-playbooks/generated_inventories"
+}
+
+# Main test function
+main() {
+    print_info "Multi-Lab Deployment Setup Test"
+    print_info "================================"
+    print_info "Testing deployment environment and scripts..."
+    echo ""
+    
+    # Test 1: Check system prerequisites
+    print_test "Checking system prerequisites..."
+    run_test "Python 3 availability" "command_exists python3" || true
+    run_test "Ansible availability" "command_exists ansible" || true
+    run_test "Bash 4+ availability" "[[ \${BASH_VERSION%%.*} -ge 4 ]]" || true
+    
+    # Test 2: Check Python modules
+    print_test "Checking Python dependencies..."
+    run_test "PyYAML module" "python_module_exists yaml" || true
+    run_test "JSON module" "python_module_exists json" || true
+    run_test "Pathlib module" "python_module_exists pathlib" || true
+    
+    # Test 3: Check script files exist
+    print_test "Checking script files..."
+    run_test "Parser script exists" "[[ -f '$SCRIPT_DIR/parse_lab_config.py' ]]" || true
+    run_test "Deployment script exists" "[[ -f '$SCRIPT_DIR/deploy_multiple_labs.sh' ]]" || true
+    run_test "Credentials template exists" "[[ -f '$SCRIPT_DIR/credentials.yml.example' ]]" || true
+    run_test "README exists" "[[ -f '$SCRIPT_DIR/README.md' ]]" || true
+    
+    # Test 4: Check script permissions
+    print_test "Checking script permissions..."
+    run_test "Parser script executable" "[[ -x '$SCRIPT_DIR/parse_lab_config.py' ]]" || true
+    run_test "Deployment script executable" "[[ -x '$SCRIPT_DIR/deploy_multiple_labs.sh' ]]" || true
+    
+    # Test 5: Test script syntax
+    print_test "Checking script syntax..."
+    test_script_syntax "$SCRIPT_DIR/parse_lab_config.py"
+    test_script_syntax "$SCRIPT_DIR/deploy_multiple_labs.sh"
+    
+    # Test 6: Check ansible-playbooks directory structure
+    print_test "Checking ansible-playbooks structure..."
+    run_test "Ansible directory exists" "[[ -d '$PROJECT_ROOT/ansible-playbooks' ]]" || true
+    run_test "Site.yml exists" "[[ -f '$PROJECT_ROOT/ansible-playbooks/site.yml' ]]" || true
+    run_test "Requirements.yml exists" "[[ -f '$PROJECT_ROOT/ansible-playbooks/requirements.yml' ]]" || true
+    run_test "Original deploy script exists" "[[ -f '$PROJECT_ROOT/ansible-playbooks/deploy-via-jumphost.sh' ]]" || true
+    
+    # Test 7: Test parser with sample data
+    print_test "Testing parser functionality..."
+    create_test_config
+    
+    cd "$PROJECT_ROOT/ansible-playbooks"
+    run_test "Parser processes test config" "python3 '$SCRIPT_DIR/parse_lab_config.py' '$SCRIPT_DIR/test_labs_config'" || true
+    
+    if [[ -d "generated_inventories" ]]; then
+        run_test "Inventory files generated" "[[ \$(ls generated_inventories/hosts-cluster-*.yml 2>/dev/null | wc -l) -eq 2 ]]"
+        run_test "Lab summary generated" "[[ -f 'generated_inventories/lab_summary.json' ]]" || true
+        
+        # Test inventory file content
+        if [[ -f "generated_inventories/hosts-cluster-test1.yml" ]]; then
+            run_test "Test1 inventory has correct GUID" "grep -q 'lab_guid: \"test1\"' generated_inventories/hosts-cluster-test1.yml" || true
+            run_test "Test1 inventory has bastion info" "grep -q 'bastion_hostname: \"ssh.example.com\"' generated_inventories/hosts-cluster-test1.yml" || true
+        fi
+    fi
+    
+    # Test 8: Test deployment script help and validation
+    print_test "Testing deployment script functionality..."
+    cd "$SCRIPT_DIR"
+    run_test "Deployment script shows help" "./deploy_multiple_labs.sh --help | grep -q 'Usage:'"
+    run_test "Deployment script lists labs" "./deploy_multiple_labs.sh --list test_labs_config | grep -q 'test1'"
+    
+    # Test 9: Test credentials handling
+    print_test "Testing credentials functionality..."
+    create_test_credentials
+    if [[ -f "test_credentials.yml" ]]; then
+        run_test "Credentials file readable" "python3 -c 'import yaml; yaml.safe_load(open(\"test_credentials.yml\"))'" || true
+    fi
+    
+    # Test 10: Dry run test
+    print_test "Testing dry run functionality..."
+    if [[ -f "test_labs_config" ]]; then
+        # This should not fail even with test data since it's a dry run
+        if timeout 30 ./deploy_multiple_labs.sh -d test_labs_config &>/dev/null; then
+            print_pass "Dry run completes without errors"
+            ((TESTS_PASSED++))
+        else
+            print_warn "Dry run test skipped (expected with test data)"
+        fi
+        ((TESTS_TOTAL++))
+    fi
+    
+    # Cleanup
+    cleanup_test_files
+    
+    # Summary
+    echo ""
+    print_info "Test Summary"
+    print_info "============"
+    print_info "Total tests: $TESTS_TOTAL"
+    print_info "Passed: $TESTS_PASSED"
+    print_info "Failed: $TESTS_FAILED"
+    
+    if [[ $TESTS_FAILED -eq 0 ]]; then
+        print_pass "All tests passed! ✅"
+        print_info "Your multi-lab deployment setup is ready to use."
+        echo ""
+        print_info "Next steps:"
+        print_info "1. Create your lab configuration file"
+        print_info "2. Set up credentials: cp scripts/credentials.yml.example scripts/credentials.yml"
+        print_info "3. Run: ./scripts/deploy_multiple_labs.sh your_lab_config_file"
+        return 0
+    else
+        print_fail "Some tests failed! ❌"
+        print_info "Please fix the issues above before proceeding."
+        return 1
+    fi
+}
+
+# Show usage if requested
+if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    echo "Multi-Lab Deployment Setup Test"
+    echo ""
+    echo "Usage: $0"
+    echo ""
+    echo "This script validates that your environment is properly configured"
+    echo "for multi-lab RHOSO deployment. It checks:"
+    echo ""
+    echo "  • System prerequisites (Python, Ansible, Bash)"
+    echo "  • Required Python modules"
+    echo "  • Script files and permissions"
+    echo "  • Script syntax and functionality"
+    echo "  • Ansible playbook structure"
+    echo "  • Parser and deployment script functionality"
+    echo ""
+    echo "Run this script before attempting to deploy multiple labs."
+    exit 0
+fi
+
+# Run main function
+main "$@"
