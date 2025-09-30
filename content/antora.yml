@@ -1,5 +1,5 @@
 name: modules
-title: Default Title
+title: Hands-On Migration from VMware to OpenStack with Ansible and AWX
 version: master
 nav:
   - modules/ROOT/nav.adoc

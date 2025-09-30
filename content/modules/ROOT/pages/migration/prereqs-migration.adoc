@@ -33,7 +33,6 @@ Download the latest Centos 10 qcow2 that it will be used to deploy the conversio
 
 [source,bash,role=execute]
 ----
-cd
 curl -O -L https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
 ----
 
