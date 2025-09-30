@@ -435,7 +435,7 @@ import re
 import sys
 
 def extract_labs(content):
-    service_blocks = re.split(r'^(openshift-cnv\.osp-on-ocp-cnv\.dev-\w+)', content, flags=re.MULTILINE)
+    service_blocks = re.split(r'^(openshift-cnv\.osp-on-ocp-cnv\.(?:dev|prod)-\w+)', content, flags=re.MULTILINE)
     labs = []
     
     for i in range(1, len(service_blocks), 2):

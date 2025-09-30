@@ -5,11 +5,17 @@ Parses the lab configuration file and extracts cluster information for deploymen
 """
 
 import re
-import yaml
 import json
 import sys
 from typing import Dict, List, Any
 from pathlib import Path
+
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+    print("Warning: PyYAML not available. YAML parsing will be limited.")
 
 
 class LabConfigParser:
@@ -34,7 +40,7 @@ class LabConfigParser:
         labs = []
         
         # Split content by service entries (looking for service names starting with openshift-cnv)
-        service_blocks = re.split(r'^(openshift-cnv\.osp-on-ocp-cnv\.dev-\w+)', content, flags=re.MULTILINE)
+        service_blocks = re.split(r'^(openshift-cnv\.osp-on-ocp-cnv\.(?:dev|prod)-\w+)', content, flags=re.MULTILINE)
         
         # Process each service block (skip the first empty element)
         for i in range(1, len(service_blocks), 2):
@@ -153,15 +159,18 @@ class LabConfigParser:
     def _extract_yaml_data(self, content: str) -> Dict[str, Any]:
         """Extract YAML data section if present."""
         # Look for the Data section which contains YAML
-        yaml_match = re.search(r'Data\s*\n(openshift-cnv\.osp-on-ocp-cnv\.dev:.*?)(?=\n\S|\Z)', content, re.DOTALL)
-        if yaml_match:
+        yaml_match = re.search(r'Data\s*\n(openshift-cnv\.osp-on-ocp-cnv\.(?:dev|prod):.*?)(?=\n\S|\Z)', content, re.DOTALL)
+        if yaml_match and YAML_AVAILABLE:
             try:
                 yaml_content = yaml_match.group(1)
                 # Parse the YAML content
                 yaml_data = yaml.safe_load(yaml_content)
-                if isinstance(yaml_data, dict) and 'openshift-cnv.osp-on-ocp-cnv.dev' in yaml_data:
-                    return yaml_data['openshift-cnv.osp-on-ocp-cnv.dev']
-            except yaml.YAMLError as e:
+                if isinstance(yaml_data, dict):
+                    # Look for either dev or prod key
+                    for key in yaml_data:
+                        if 'openshift-cnv.osp-on-ocp-cnv' in key:
+                            return yaml_data[key]
+            except Exception as e:
                 print(f"Warning: Failed to parse YAML data: {e}")
         
         return {}
@@ -264,7 +273,11 @@ class LabConfigParser:
 # Generated automatically from lab configuration data
 
 """
-            yaml_content += yaml.dump(inventory, default_flow_style=False, sort_keys=False)
+            if YAML_AVAILABLE:
+                yaml_content += yaml.dump(inventory, default_flow_style=False, sort_keys=False)
+            else:
+                # Fallback to JSON format if YAML not available
+                yaml_content += json.dumps(inventory, indent=2)
             
             filepath.write_text(yaml_content)
             inventory_files.append(str(filepath))
