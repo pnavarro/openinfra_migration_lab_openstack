@@ -1,0 +1,116 @@
+---
+# Independent playbook to configure Showroom Git repository URL
+# This playbook sets the GIT_REPO_URL environment variable for the showroom deployment
+# Designed to work with SSH jump host (bastion) connectivity
+
+- name: Configure Showroom Git Repository URL
+  hosts: bastion
+  become: false
+  gather_facts: false
+  vars:
+    # Git repository URL to set for showroom
+    showroom_git_repo_url: "https://github.com/pnavarro/openinfra_migration_lab_openstack"
+    # Showroom namespace (default: showroom)
+    showroom_namespace: "showroom"
+    # Deployment name (default: showroom)
+    showroom_deployment: "showroom"
+    
+  tasks:
+    - name: Verify OpenShift cluster access
+      shell: oc whoami
+      register: oc_whoami_result
+      changed_when: false
+      failed_when: oc_whoami_result.rc != 0
+
+    - name: Display current OpenShift user
+      debug:
+        msg: "Connected to OpenShift as: {{ oc_whoami_result.stdout }}"
+
+    - name: Check if showroom namespace exists
+      shell: oc get namespace {{ showroom_namespace }}
+      register: namespace_check
+      changed_when: false
+      failed_when: false
+
+    - name: Display namespace status
+      debug:
+        msg: "Showroom namespace {{ showroom_namespace }} {{ 'exists' if namespace_check.rc == 0 else 'does not exist' }}"
+
+    - name: Check if showroom deployment exists
+      shell: oc get deployment {{ showroom_deployment }} -n {{ showroom_namespace }}
+      register: deployment_check
+      changed_when: false
+      failed_when: false
+      when: namespace_check.rc == 0
+
+    - name: Display deployment status
+      debug:
+        msg: "Showroom deployment {{ showroom_deployment }} {{ 'exists' if deployment_check.rc == 0 else 'does not exist' }}"
+      when: namespace_check.rc == 0
+
+    - name: Set GIT_REPO_URL environment variable for showroom deployment
+      shell: >
+        oc set env deployment/{{ showroom_deployment }} 
+        -n {{ showroom_namespace }} 
+        GIT_REPO_URL={{ showroom_git_repo_url }}
+      register: set_env_result
+      when: 
+        - namespace_check.rc == 0
+        - deployment_check.rc == 0
+      changed_when: "'updated" in set_env_result.stdout'
+
+    - name: Display environment variable update result
+      debug:
+        var: set_env_result.stdout_lines
+      when: 
+        - namespace_check.rc == 0
+        - deployment_check.rc == 0
+        - set_env_result is defined
+
+    - name: Verify environment variable is set
+      shell: >
+        oc get deployment {{ showroom_deployment }} 
+        -n {{ showroom_namespace }} 
+        -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="GIT_REPO_URL")].value}'
+      register: verify_env_result
+      changed_when: false
+      when: 
+        - namespace_check.rc == 0
+        - deployment_check.rc == 0
+
+    - name: Display current GIT_REPO_URL value
+      debug:
+        msg: "Current GIT_REPO_URL: {{ verify_env_result.stdout }}"
+      when: 
+        - namespace_check.rc == 0
+        - deployment_check.rc == 0
+        - verify_env_result is defined
+
+    - name: Wait for deployment rollout to complete
+      shell: oc rollout status deployment/{{ showroom_deployment }} -n {{ showroom_namespace }}
+      register: rollout_result
+      when: 
+        - namespace_check.rc == 0
+        - deployment_check.rc == 0
+        - set_env_result is defined
+        - set_env_result.changed
+      changed_when: false
+
+    - name: Display rollout status
+      debug:
+        var: rollout_result.stdout_lines
+      when: 
+        - rollout_result is defined
+        - rollout_result.stdout_lines is defined
+
+    - name: Handle missing namespace
+      debug:
+        msg: "WARNING: Namespace '{{ showroom_namespace }}' does not exist. Please ensure showroom is deployed first."
+      when: namespace_check.rc != 0
+
+    - name: Handle missing deployment
+      debug:
+        msg: "WARNING: Deployment '{{ showroom_deployment }}' does not exist in namespace '{{ showroom_namespace }}'. Please ensure showroom is deployed first."
+      when: 
+        - namespace_check.rc == 0
+        - deployment_check.rc != 0
