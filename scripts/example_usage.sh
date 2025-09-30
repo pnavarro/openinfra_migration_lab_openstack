@@ -378,3 +378,4 @@ fi
 
 # Run main function
 main "$@"
+

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Script to configure AWX instance group with nodeSelector for conversion host connectivity
+# Script to create AWX instance group with nodeSelector for conversion host connectivity
 # Usage: ./configure-awx-node-selector.sh <rhoso_conversion_host_ip>
 
 set -euo pipefail
 
 # Configuration
 AWX_NAMESPACE="${AWX_NAMESPACE:-awx}"
-INSTANCE_GROUP_NAME="${INSTANCE_GROUP_NAME:-default}"
+INSTANCE_GROUP_NAME="${INSTANCE_GROUP_NAME:-conversion-host-group}"
 SSH_PORT="${SSH_PORT:-22}"
 TIMEOUT="${TIMEOUT:-5}"
 
@@ -43,14 +43,14 @@ Usage: $0 <rhoso_conversion_host_ip>
 This script:
 1. Tests SSH connectivity from OpenShift nodes to the conversion host
 2. Identifies which node can reach the conversion host
-3. Updates AWX instance group with nodeSelector for that node
+3. Creates a new AWX instance group with nodeSelector for that node
 
 Parameters:
   rhoso_conversion_host_ip    IP address of the RHOSO conversion host
 
 Environment Variables:
   AWX_NAMESPACE              AWX namespace (default: awx)
-  INSTANCE_GROUP_NAME        AWX instance group name (default: default)
+  INSTANCE_GROUP_NAME        AWX instance group name (default: conversion-host-group)
   SSH_PORT                   SSH port to test (default: 22)
   TIMEOUT                    Connection timeout in seconds (default: 5)
 
@@ -175,60 +175,93 @@ get_awx_url() {
     echo "https://$awx_route"
 }
 
-# Function to update AWX instance group
-update_awx_instance_group() {
+# Function to create AWX instance group
+create_awx_instance_group() {
     local node_name="$1"
     local awx_url="$2"
     local awx_password="$3"
     
-    print_info "Updating AWX instance group '$INSTANCE_GROUP_NAME' with nodeSelector for node: $node_name"
+    print_info "Creating AWX instance group '$INSTANCE_GROUP_NAME' with nodeSelector for node: $node_name"
     
-    # Get instance group ID
-    local instance_group_id
-    instance_group_id=$(curl -s -k -u "admin:$awx_password" \
+    # Check if instance group already exists
+    local existing_group_id
+    existing_group_id=$(curl -s -k -u "admin:$awx_password" \
         "$awx_url/api/v2/instance_groups/" \
         -H "Content-Type: application/json" | \
-        jq -r ".results[] | select(.name == \"$INSTANCE_GROUP_NAME\") | .id") || {
-        print_error "Failed to get instance group ID for '$INSTANCE_GROUP_NAME'"
-        exit 1
-    }
+        jq -r ".results[] | select(.name == \"$INSTANCE_GROUP_NAME\") | .id" 2>/dev/null)
     
-    if [[ -z "$instance_group_id" || "$instance_group_id" == "null" ]]; then
-        print_error "Instance group '$INSTANCE_GROUP_NAME' not found in AWX"
-        exit 1
-    fi
-    
-    print_info "Found instance group '$INSTANCE_GROUP_NAME' with ID: $instance_group_id"
-    
-    # Prepare the patch data
-    local patch_data
-    patch_data=$(cat << EOF
-{
-    "pod_spec_override": "spec:\n  nodeSelector:\n    kubernetes.io/hostname: $node_name"
-}
-EOF
-)
-    
-    # Update instance group
-    local response
-    response=$(curl -s -k -u "admin:$awx_password" \
-        -X PATCH \
-        "$awx_url/api/v2/instance_groups/$instance_group_id/" \
-        -H "Content-Type: application/json" \
-        -d "$patch_data") || {
-        print_error "Failed to update AWX instance group"
-        exit 1
-    }
-    
-    # Check if update was successful
-    local updated_name
-    updated_name=$(echo "$response" | jq -r '.name' 2>/dev/null)
-    
-    if [[ "$updated_name" == "$INSTANCE_GROUP_NAME" ]]; then
-        print_success "Successfully updated AWX instance group '$INSTANCE_GROUP_NAME' with nodeSelector for node: $node_name"
+    if [[ -n "$existing_group_id" && "$existing_group_id" != "null" ]]; then
+        print_warning "Instance group '$INSTANCE_GROUP_NAME' already exists with ID: $existing_group_id"
+        print_info "Updating existing instance group instead of creating new one"
+        
+        # Prepare the patch data for update
+        local patch_data
+        patch_data=$(jq -n --arg pod_spec "spec:\n  nodeSelector:\n    kubernetes.io/hostname: $node_name" \
+            '{pod_spec_override: $pod_spec}')
+        
+        # Update existing instance group
+        local response
+        response=$(curl -s -k -u "admin:$awx_password" \
+            -X PATCH \
+            "$awx_url/api/v2/instance_groups/$existing_group_id/" \
+            -H "Content-Type: application/json" \
+            -d "$patch_data") || {
+            print_error "Failed to update existing AWX instance group"
+            exit 1
+        }
+        
+        # Check if update was successful
+        local updated_name
+        updated_name=$(echo "$response" | jq -r '.name' 2>/dev/null)
+        
+        if [[ "$updated_name" == "$INSTANCE_GROUP_NAME" ]]; then
+            print_success "Successfully updated existing AWX instance group '$INSTANCE_GROUP_NAME' with nodeSelector for node: $node_name"
+        else
+            print_error "Failed to update existing AWX instance group. Response: $response"
+            exit 1
+        fi
     else
-        print_error "Failed to update AWX instance group. Response: $response"
-        exit 1
+        # Create new instance group
+        print_info "Creating new instance group '$INSTANCE_GROUP_NAME'"
+        
+        # Prepare the creation data
+        local create_data
+        create_data=$(jq -n \
+            --arg name "$INSTANCE_GROUP_NAME" \
+            --arg pod_spec "spec:\n  nodeSelector:\n    kubernetes.io/hostname: $node_name" \
+            '{
+                name: $name,
+                pod_spec_override: $pod_spec,
+                is_container_group: true
+            }')
+        
+        # Create instance group
+        local response
+        response=$(curl -s -k -u "admin:$awx_password" \
+            -X POST \
+            "$awx_url/api/v2/instance_groups/" \
+            -H "Content-Type: application/json" \
+            -d "$create_data") || {
+            print_error "Failed to create AWX instance group"
+            exit 1
+        }
+        
+        # Check if creation was successful
+        local created_name created_id
+        created_name=$(echo "$response" | jq -r '.name' 2>/dev/null)
+        created_id=$(echo "$response" | jq -r '.id' 2>/dev/null)
+        
+        if [[ "$created_name" == "$INSTANCE_GROUP_NAME" && "$created_id" != "null" ]]; then
+            print_success "Successfully created AWX instance group '$INSTANCE_GROUP_NAME' with ID: $created_id"
+            print_success "Instance group configured with nodeSelector for node: $node_name"
+        else
+            print_error "Failed to create AWX instance group. Response: $response"
+            # Try to extract error message
+            local error_msg
+            error_msg=$(echo "$response" | jq -r '.detail // .error // "Unknown error"' 2>/dev/null)
+            print_error "Error details: $error_msg"
+            exit 1
+        fi
     fi
 }
 
@@ -302,16 +335,22 @@ main() {
     print_success "AWX URL: $awx_url"
     echo
     
-    # Update AWX instance group
-    update_awx_instance_group "$accessible_node" "$awx_url" "$awx_password"
+    # Create AWX instance group
+    create_awx_instance_group "$accessible_node" "$awx_url" "$awx_password"
     echo
     
     # Verify configuration
     verify_configuration "$accessible_node" "$awx_url" "$awx_password"
     echo
     
-    print_success "AWX configuration completed successfully!"
-    print_info "All AWX jobs in the '$INSTANCE_GROUP_NAME' instance group will now run on node: $accessible_node"
+    print_success "AWX instance group creation completed successfully!"
+    print_info "AWX instance group '$INSTANCE_GROUP_NAME' created and configured to run jobs on node: $accessible_node"
+    echo
+    print_info "To use this instance group:"
+    print_info "1. In AWX UI, go to your Job Templates"
+    print_info "2. Edit the Job Template you want to run on the conversion host node"
+    print_info "3. Set 'Instance Groups' to '$INSTANCE_GROUP_NAME'"
+    print_info "4. Save the Job Template"
 }
 
 # Run main function with all arguments

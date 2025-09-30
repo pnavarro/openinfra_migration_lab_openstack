@@ -64,8 +64,8 @@ kubectl get pods -l "app.kubernetes.io/managed-by=awx-operator"
 ----
 Name                                               Phase
 NAME                        READY   STATUS    RESTARTS   AGE
-awx-demo-77d96f88d5-pnhr8   4/4     Running   0          3m24s
-awx-demo-postgres-0         1/1     Running   0          3m34s
+awx-vmware-migrations-77d96f88d5-pnhr8   4/4     Running   0          3m24s
+awx-vmware-migrations-postgres-0         1/1     Running   0          3m34s
 ----
 
 [source,bash,role=execute]
@@ -76,8 +76,8 @@ kubectl get svc -l "app.kubernetes.io/managed-by=awx-operator"
 .Sample Output
 ----
 NAME                TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-awx-demo-postgres   ClusterIP   None           <none>        5432/TCP       4m4s
-awx-demo-service    NodePort    10.109.40.38   <none>        80:31006/TCP   3m56s
+awx-vmware-migrations-postgres   ClusterIP   None           <none>        5432/TCP       4m4s
+awx-vmware-migrations-service    NodePort    10.109.40.38   <none>        80:31006/TCP   3m56s
 ----
 
 Make sure all the pods are running. (You might need to wait around 4 minutes):

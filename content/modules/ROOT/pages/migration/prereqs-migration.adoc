@@ -110,6 +110,30 @@ Add the floating IP above to the new VM in the next step.
 [source,bash,role=execute,subs=attributes]
 ----
 openstack server add floating ip centos10-ch {rhoso_conversion_host_ip}
+----
+
+Make sure the VM is running.
+
+[source,bash,role=execute,subs=attributes]
+----
+openstack server list
+----
+
+. Sample Output
+
+[source,bash,subs=attributes]
+----
++--------------------------------------+-------------+--------+----------------------------------+----------------+---------+
+| ID                                   | Name        | Status | Networks                         | Image          | Flavor  |
++--------------------------------------+-------------+--------+----------------------------------+----------------+---------+
+| b037521d-b583-4ac0-9906-73ad9c0624dd | centos10-ch | ACTIVE | private=10.0.0.252, {rhoso_conversion_host_ip} | centos10-image | migrate |
++--------------------------------------+-------------+--------+----------------------------------+----------------+---------+
+----
+
+Exit the openstackclient pod.
+
+[source,bash,role=execute]
+----
 exit
 ----
 
