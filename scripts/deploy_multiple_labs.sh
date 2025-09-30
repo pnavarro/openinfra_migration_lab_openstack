@@ -64,6 +64,7 @@ show_usage() {
     echo ""
     echo "Options:"
     echo "  -h, --help              Show this help message"
+    echo "  -c, --check-inventory   Check inventory configuration only"
     echo "  -j, --jobs NUM          Maximum parallel jobs (default: $MAX_PARALLEL_JOBS)"
     echo "  -p, --phase PHASE       Deployment phase (default: $DEPLOYMENT_PHASE)"
     echo "  -d, --dry-run          Run in check mode (no changes)"
@@ -90,13 +91,14 @@ show_usage() {
     echo "  rhc_password: \"YourRHPassword123\""
     echo ""
     echo "Examples:"
-    echo "  $0 labs_to_be_deployed"
-    echo "  $0 -j 2 -p prerequisites labs_to_be_deployed"
-    echo "  $0 -d -v labs_to_be_deployed"
-    echo "  $0 --credentials creds.yml labs_to_be_deployed"
+    echo "  $0 labs_to_be_deployed                    # Deploy all labs"
+    echo "  $0 -c labs_to_be_deployed                 # Check inventory configuration only"
+    echo "  $0 -j 2 -p prerequisites labs_to_be_deployed  # Deploy prerequisites with 2 parallel jobs"
+    echo "  $0 -d -v labs_to_be_deployed              # Dry run with verbose output"
+    echo "  $0 --credentials creds.yml labs_to_be_deployed  # Use credentials file"
 }
 
-# Function to check prerequisites
+# Function to check prerequisites (enhanced like deploy-via-jumphost.sh)
 check_prerequisites() {
     print_status "Checking prerequisites..."
     
@@ -112,6 +114,10 @@ check_prerequisites() {
         exit 1
     fi
     
+    # Check ansible version
+    local ansible_version=$(ansible --version | head -1 | cut -d' ' -f3)
+    print_status "Found Ansible version: $ansible_version"
+    
     # Check if required Python modules are available
     if ! python3 -c "import yaml" &> /dev/null; then
         print_error "PyYAML is not installed. Please install it: pip3 install PyYAML"
@@ -124,11 +130,34 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check ansible version
-    local ansible_version=$(ansible --version | head -1 | cut -d' ' -f3)
-    print_status "Found Ansible version: $ansible_version"
+    # Check if we're in the right directory structure
+    if [[ ! -f "$ANSIBLE_DIR/site.yml" ]]; then
+        print_error "Main playbook site.yml not found in $ANSIBLE_DIR"
+        print_error "Please run this script from the project root directory"
+        exit 1
+    fi
+    
+    # Check if requirements.yml exists
+    if [[ ! -f "$ANSIBLE_DIR/requirements.yml" ]]; then
+        print_error "Ansible requirements file not found: $ANSIBLE_DIR/requirements.yml"
+        exit 1
+    fi
     
     print_status "Prerequisites check passed!"
+}
+
+# Function to install required collections globally (like deploy-via-jumphost.sh)
+install_collections() {
+    print_status "Installing required Ansible collections globally..."
+    
+    cd "$ANSIBLE_DIR"
+    
+    if ! ansible-galaxy collection install -r requirements.yml --force; then
+        print_error "Failed to install required Ansible collections"
+        exit 1
+    fi
+    
+    print_status "Ansible collections installed successfully"
 }
 
 # Function to create necessary directories
@@ -253,44 +282,93 @@ PYTHON_EOF
     rm -f /tmp/credentials_updater.py
 }
 
-# Function to validate inventory files
+# Function to check individual inventory configuration (similar to deploy-via-jumphost.sh)
+check_inventory_file() {
+    local inventory_file="$1"
+    local lab_guid="$2"
+    
+    print_status "Checking inventory configuration for lab: $lab_guid"
+    
+    # Check for 'changeme' values
+    if grep -q "changeme" "$inventory_file"; then
+        print_error "Inventory file for lab $lab_guid contains default 'changeme' values."
+        echo ""
+        echo "Please update the following in $inventory_file:"
+        echo "  - lab_guid: Your lab GUID"
+        echo "  - bastion_hostname: Your bastion hostname (e.g., ssh.ocpvdev01.rhdp.net)"
+        echo "  - bastion_port: Your SSH port (e.g., 31295)"
+        echo "  - bastion_password: Your bastion password"
+        echo "  - registry_username: Red Hat registry service account username"
+        echo "  - registry_password: Red Hat registry service account password/token"
+        echo "  - rhc_username: Red Hat Customer Portal username"
+        echo "  - rhc_password: Red Hat Customer Portal password"
+        echo ""
+        return 1
+    fi
+    
+    # Test SSH connectivity to bastion (if possible)
+    local bastion_host=$(grep "bastion_hostname:" "$inventory_file" | cut -d'"' -f2)
+    local bastion_port=$(grep "bastion_port:" "$inventory_file" | cut -d'"' -f2)
+    local bastion_user=$(grep "bastion_user:" "$inventory_file" | cut -d'"' -f2 || echo "lab-user")
+    
+    if [[ "$bastion_host" == *"example.com"* ]]; then
+        print_warning "Lab $lab_guid: Bastion hostname still contains 'example.com'. Please update it."
+        return 1
+    fi
+    
+    # Basic connectivity test (non-blocking)
+    if command -v nc &> /dev/null && [[ -n "$bastion_host" && -n "$bastion_port" ]]; then
+        print_status "Testing SSH connectivity to bastion for lab $lab_guid: ${bastion_user}@${bastion_host}:${bastion_port}"
+        if timeout 5 nc -z "$bastion_host" "$bastion_port" 2>/dev/null; then
+            print_status "✅ Lab $lab_guid: Bastion connectivity test passed"
+        else
+            print_warning "⚠️  Lab $lab_guid: Bastion connectivity test failed (may be due to firewall/network)"
+            print_warning "    This may not prevent deployment if bastion is accessible from Ansible control node"
+        fi
+    fi
+    
+    print_status "Lab $lab_guid: Inventory configuration looks good!"
+    print_status "Lab $lab_guid: Bastion: ${bastion_user}@${bastion_host}:${bastion_port}"
+    return 0
+}
+
+# Function to validate inventory files with enhanced checks
 validate_inventories() {
     print_status "Validating generated inventory files..."
     
     local inventory_files=("$GENERATED_INVENTORIES_DIR"/hosts-cluster-*.yml)
     local valid_count=0
+    local failed_labs=()
     
     for inventory_file in "${inventory_files[@]}"; do
         if [[ -f "$inventory_file" ]]; then
-            print_status "Validating: $(basename "$inventory_file")"
+            # Extract lab GUID from filename
+            local filename=$(basename "$inventory_file")
+            local lab_guid=$(echo "$filename" | sed 's/hosts-cluster-\(.*\)\.yml/\1/')
             
-            # Check for required fields
-            local missing_fields=()
-            
-            if grep -q 'lab_guid: ""' "$inventory_file"; then
-                missing_fields+=("lab_guid")
-            fi
-            if grep -q 'bastion_hostname: ""' "$inventory_file"; then
-                missing_fields+=("bastion_hostname")
-            fi
-            if grep -q 'bastion_password: ""' "$inventory_file"; then
-                missing_fields+=("bastion_password")
-            fi
-            
-            if [[ ${#missing_fields[@]} -gt 0 ]]; then
-                print_warning "Missing required fields in $(basename "$inventory_file"): ${missing_fields[*]}"
-            else
+            if check_inventory_file "$inventory_file" "$lab_guid"; then
                 ((valid_count++))
+            else
+                failed_labs+=("$lab_guid")
             fi
+            echo
         fi
     done
     
-    print_status "Validated $valid_count inventory files."
+    print_status "Validated $valid_count inventory files successfully."
+    
+    if [[ ${#failed_labs[@]} -gt 0 ]]; then
+        print_error "Failed validation for labs: ${failed_labs[*]}"
+        print_error "Please fix the configuration issues and try again."
+        return 1
+    fi
     
     if [[ $valid_count -eq 0 ]]; then
         print_error "No valid inventory files found!"
-        exit 1
+        return 1
     fi
+    
+    return 0
 }
 
 # Function to deploy a single lab
@@ -319,11 +397,8 @@ deploy_lab() {
     # Change to ansible directory
     cd "$ANSIBLE_DIR"
     
-    # Install required collections (do this for each lab to ensure consistency)
-    if ! ansible-galaxy collection install -r requirements.yml --force >> "$log_file" 2>&1; then
-        print_error "Failed to install Ansible collections for lab $lab_guid"
-        return 1
-    fi
+    # Collections are installed globally, so we can skip per-lab installation
+    print_lab "[$lab_guid] Using globally installed Ansible collections"
     
     # Run the deployment
     local start_time=$(date +%s)
@@ -511,6 +586,7 @@ main() {
     local config_file=""
     local credentials_file=""
     local list_only=false
+    local check_only=false
     
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -518,6 +594,10 @@ main() {
             -h|--help)
                 show_usage
                 exit 0
+                ;;
+            -c|--check-inventory)
+                check_only=true
+                shift
                 ;;
             -j|--jobs)
                 MAX_PARALLEL_JOBS="$2"
@@ -599,7 +679,21 @@ main() {
         update_credentials "$credentials_file"
     fi
     
-    validate_inventories
+    # Validate inventories with enhanced checks
+    if ! validate_inventories; then
+        print_error "Inventory validation failed. Please fix the issues and try again."
+        exit 1
+    fi
+    
+    # If check-only mode, exit after validation
+    if [[ "$check_only" == "true" ]]; then
+        print_status "✅ Inventory validation completed successfully!"
+        print_status "All lab configurations are ready for deployment."
+        exit 0
+    fi
+    
+    # Install required Ansible collections globally
+    install_collections
     
     # Deploy all labs
     if deploy_all_labs "$DEPLOYMENT_PHASE" "$DRY_RUN" "$VERBOSE" "$MAX_PARALLEL_JOBS"; then
