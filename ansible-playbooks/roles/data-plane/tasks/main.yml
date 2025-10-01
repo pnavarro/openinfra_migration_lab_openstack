@@ -53,6 +53,7 @@
   community.general.nmcli:
     conn_name: "eth0-dhcp"
     stable_id: "user-set"
+    state: present
   delegate_to: compute01
   become: true
 
