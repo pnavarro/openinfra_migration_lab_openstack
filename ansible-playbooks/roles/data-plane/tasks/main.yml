@@ -50,12 +50,10 @@
   become: true
 
 - name: Set stable ID for eth0 connection
-  community.general.nmcli:
-    conn_name: "eth0-dhcp"
-    stable_id: "user-set"
-    state: present
+  command: nmcli con mod eth0-dhcp connection.stable-id user-set
   delegate_to: compute01
   become: true
+  changed_when: true
 
 - name: Read SSH key files from remote host
   ansible.builtin.slurp:
