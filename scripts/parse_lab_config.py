@@ -225,6 +225,9 @@ class LabConfigParser:
         inventory = {
             'all': {
                 'vars': {
+                    # Python interpreter for Ansible
+                    'ansible_python_interpreter': '/usr/bin/python3',
+                    
                     # Lab Environment Configuration
                     'lab_guid': lab_config.get('lab_guid', ''),
                     'bastion_user': 'lab-user',
@@ -267,10 +270,16 @@ class LabConfigParser:
             'bastion': {
                 'hosts': {
                     'bastion-jumphost': {
-                        'ansible_host': '{{ bastion_hostname }}',
-                        'ansible_user': '{{ bastion_user }}',
-                        'ansible_port': '{{ bastion_port }}',
-                        'ansible_ssh_pass': '{{ bastion_password }}'
+                        # For running FROM the jumphost (localhost mode):
+                        'ansible_host': 'localhost',
+                        'ansible_connection': 'local',
+                        'ansible_user': 'fedora',
+                        
+                        # For external bastion hosts (original design) - uncomment if needed:
+                        # 'ansible_host': '{{ bastion_hostname }}',
+                        # 'ansible_user': '{{ bastion_user }}',
+                        # 'ansible_port': '{{ bastion_port }}',
+                        # 'ansible_ssh_pass': '{{ bastion_password }}'
                     }
                 }
             },

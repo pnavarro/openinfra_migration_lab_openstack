@@ -146,7 +146,7 @@ Orchestrates deployment across multiple labs with parallel execution.
 
 Create a YAML file with your Red Hat credentials:
 
-```yaml
+   ```yaml
 # Red Hat Registry Service Account Credentials
 # Get these from: https://access.redhat.com/articles/RegistryAuthentication#creating-registry-service-accounts-6
 registry_username: "12345678|myserviceaccount"
@@ -363,6 +363,28 @@ chmod 600 scripts/credentials.yml
 # Set restrictive permissions on generated inventories
 chmod 600 ansible-playbooks/generated_inventories/hosts-cluster-*.yml
 ```
+
+## Recent Fixes and Improvements
+
+### Bastion Execution Model ✅
+- **Fixed**: Scripts now use the correct execution model where deployments run **ON** bastion hosts
+- **Architecture**: `Jumphost → SSH to Bastion → Run locally on bastion`
+- **Benefit**: Proper access to OpenShift clusters from bastion hosts
+
+### Python 3.11 Compatibility ✅
+- **Fixed**: Automatic detection and installation of kubernetes library for Python 3.11
+- **Fixed**: Proper `ansible_python_interpreter` configuration
+- **Benefit**: Resolves "Failed to import the required Python library (kubernetes)" errors
+
+### Environment Auto-Setup ✅
+- **Added**: Automatic installation of required packages on bastion hosts
+- **Added**: Multi-version Python library management
+- **Benefit**: Reduces manual setup requirements
+
+### Parser Improvements ✅
+- **Fixed**: Graceful handling of missing PyYAML library
+- **Fixed**: Better regex patterns for lab configuration parsing
+- **Benefit**: More robust configuration file processing
 
 ## Contributing
 

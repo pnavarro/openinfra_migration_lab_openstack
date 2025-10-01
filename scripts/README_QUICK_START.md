@@ -14,17 +14,19 @@ EOF
 cp scripts/credentials.yml.example scripts/credentials.yml
 # Edit credentials.yml with your Red Hat credentials
 
-# 3. Deploy all labs FROM YOUR LOCAL MACHINE
+# 3. Deploy all labs FROM JUMPHOST (Bastion Execution Model)
 ./scripts/deploy_multiple_labs.sh --credentials scripts/credentials.yml my_labs.txt
 ```
 
 ## 🏗️ **Execution Model**
 
-**Important:** This script now runs **FROM YOUR LOCAL MACHINE** and connects to multiple bastion hosts, just like `deploy-via-jumphost.sh`. This solves Python library dependency issues and follows the original design pattern.
+**Important:** This script uses the **Bastion Execution Model** where deployments run **ON** the bastion hosts (not remotely from jumphost). This ensures proper access to OpenShift clusters.
 
-- ✅ **Local Execution**: Runs on your workstation/laptop
-- ✅ **Remote Connection**: Connects to multiple bastion hosts via SSH
-- ✅ **No Dependencies on Bastion**: No need to install Python libraries on bastion hosts
+- ✅ **Jumphost Orchestration**: Script runs from jumphost
+- ✅ **SSH to Bastion**: Connects to each bastion host via SSH
+- ✅ **Local Execution on Bastion**: Ansible runs locally on bastion (where OpenShift access is available)
+- ✅ **Auto Environment Setup**: Automatically installs required packages and Python libraries
+- ✅ **Python 3.11 Support**: Handles kubernetes library installation for correct Python version
 - ✅ **Parallel Deployment**: Deploys multiple labs simultaneously
 
 ## ✅ Prerequisites Check

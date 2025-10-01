@@ -1,6 +1,6 @@
 #!/bin/bash
 # RHOSO Deployment Script for SSH Jump Host (Bastion) connectivity
-# This script is designed to run from your local workstation and connect to the bastion
+# This script runs from jumphost, SSHs to bastion, and executes deployment locally on bastion
 
 set -euo pipefail
 
@@ -131,6 +131,82 @@ run_deployment() {
     local dry_run="$2"
     local verbose="$3"
     
+    # Extract bastion connection details from inventory
+    local bastion_host=$(grep "bastion_hostname:" inventory/hosts.yml | sed "s/.*bastion_hostname: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
+    local bastion_port=$(grep "bastion_port:" inventory/hosts.yml | sed "s/.*bastion_port: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
+    local bastion_user=$(grep "bastion_user:" inventory/hosts.yml | sed "s/.*bastion_user: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
+    local bastion_password=$(grep "bastion_password:" inventory/hosts.yml | sed "s/.*bastion_password: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
+    
+    [[ -z "$bastion_user" ]] && bastion_user="lab-user"
+    
+    print_status "Bastion connection: ${bastion_user}@${bastion_host}:${bastion_port}"
+    
+    # Setup deployment environment on bastion
+    print_status "Setting up deployment environment on bastion..."
+    local setup_commands="
+        mkdir -p /home/$bastion_user/rhoso-deployment/ansible-playbooks
+        
+        # Install required packages if not present
+        if ! command -v ansible &> /dev/null; then
+            echo 'Installing Ansible...'
+            if command -v dnf &> /dev/null; then
+                sudo dnf install -y ansible python3-pip || echo 'Failed to install via dnf'
+            elif command -v yum &> /dev/null; then
+                sudo yum install -y ansible python3-pip || echo 'Failed to install via yum'
+            fi
+        fi
+        
+        # Ensure kubernetes library is available for both Python versions
+        python3 -c 'import kubernetes' 2>/dev/null || {
+            echo 'Installing kubernetes library for default python3...'
+            python3 -m pip install --user kubernetes openshift
+        }
+        
+        # Also ensure it's available for Python 3.11 (which Ansible uses)
+        if command -v python3.11 &> /dev/null; then
+            python3.11 -c 'import kubernetes' 2>/dev/null || {
+                echo 'Installing kubernetes library for Python 3.11...'
+                # Install pip for Python 3.11 if not available
+                if ! python3.11 -m pip --version &> /dev/null; then
+                    sudo dnf install -y python3.11-pip
+                fi
+                python3.11 -m pip install --user kubernetes openshift
+            }
+        fi
+    "
+    
+    if command -v sshpass &> /dev/null && [[ -n "$bastion_password" ]]; then
+        sshpass -p "$bastion_password" ssh -o StrictHostKeyChecking=no -p "$bastion_port" "$bastion_user@$bastion_host" "$setup_commands"
+    else
+        print_warning "sshpass not available or no password. You may need to enter password manually."
+        ssh -o StrictHostKeyChecking=no -p "$bastion_port" "$bastion_user@$bastion_host" "$setup_commands"
+    fi
+    
+    # Copy deployment files to bastion
+    print_status "Copying deployment files to bastion..."
+    local temp_dir="/tmp/rhoso-deploy-$$"
+    mkdir -p "$temp_dir"
+    
+    # Copy all necessary files
+    cp -r ./* "$temp_dir/"
+    
+    # Update inventory to use correct Python interpreter
+    if [[ -f "$temp_dir/inventory/hosts.yml" ]]; then
+        # Add Python 3.11 interpreter to the inventory
+        if ! grep -q "ansible_python_interpreter" "$temp_dir/inventory/hosts.yml"; then
+            sed -i '/bastion:/a\      ansible_python_interpreter: /usr/bin/python3.11' "$temp_dir/inventory/hosts.yml"
+        fi
+    fi
+    
+    if command -v sshpass &> /dev/null && [[ -n "$bastion_password" ]]; then
+        sshpass -p "$bastion_password" scp -o StrictHostKeyChecking=no -P "$bastion_port" -r "$temp_dir"/* "$bastion_user@$bastion_host:/home/$bastion_user/rhoso-deployment/ansible-playbooks/"
+    else
+        scp -o StrictHostKeyChecking=no -P "$bastion_port" -r "$temp_dir"/* "$bastion_user@$bastion_host:/home/$bastion_user/rhoso-deployment/ansible-playbooks/"
+    fi
+    
+    rm -rf "$temp_dir"
+    
+    # Prepare ansible options
     local ansible_opts=""
     if [[ "$dry_run" == "true" ]]; then
         ansible_opts="--check --diff"
@@ -141,53 +217,69 @@ run_deployment() {
         ansible_opts="$ansible_opts -vv"
     fi
     
-    case "$phase" in
-        "prerequisites")
-            print_header "Running prerequisites phase..."
-            ansible-playbook site.yml --tags prerequisites $ansible_opts
-            ;;
-        "install-operators")
-            print_header "Installing OpenStack operators..."
-            ansible-playbook site.yml --tags install-operators $ansible_opts
-            ;;
-        "security")
-            print_header "Configuring security..."
-            ansible-playbook site.yml --tags security $ansible_opts
-            ;;
-        "nfs-server")
-            print_header "Configuring NFS server..."
-            ansible-playbook site.yml --tags nfs-server $ansible_opts
-            ;;
-        "network-isolation")
-            print_header "Setting up network isolation..."
-            ansible-playbook site.yml --tags network-isolation $ansible_opts
-            ;;
-        "control-plane")
-            print_header "Deploying control plane..."
-            ansible-playbook site.yml --tags control-plane $ansible_opts
-            ;;
-        "data-plane")
-            print_header "Configuring data plane..."
-            ansible-playbook site.yml --tags data-plane $ansible_opts
-            ;;
-        "validation")
-            print_header "Running validation..."
-            ansible-playbook site.yml --tags validation $ansible_opts
-            ;;
-        "full")
-            print_header "Running complete deployment..."
-            ansible-playbook site.yml $ansible_opts
-            ;;
-        "optional")
-            print_header "Enabling optional services (Heat, Swift)..."
-            ansible-playbook optional-services.yml $ansible_opts
-            ;;
-        *)
-            print_error "Unknown phase: $phase"
-            echo "Available phases: prerequisites, install-operators, security, nfs-server, network-isolation, control-plane, data-plane, validation, full, optional"
-            exit 1
-            ;;
-    esac
+    # Prepare deployment command to run on bastion
+    local deployment_cmd="
+        cd /home/$bastion_user/rhoso-deployment/ansible-playbooks
+        
+        # Install required collections
+        ansible-galaxy collection install -r requirements.yml --force
+        
+        # Run the deployment locally on bastion
+        case '$phase' in
+            'prerequisites')
+                echo 'Running prerequisites phase...'
+                ansible-playbook site.yml --tags prerequisites $ansible_opts
+                ;;
+            'install-operators')
+                echo 'Installing OpenStack operators...'
+                ansible-playbook site.yml --tags install-operators $ansible_opts
+                ;;
+            'security')
+                echo 'Configuring security...'
+                ansible-playbook site.yml --tags security $ansible_opts
+                ;;
+            'nfs-server')
+                echo 'Configuring NFS server...'
+                ansible-playbook site.yml --tags nfs-server $ansible_opts
+                ;;
+            'network-isolation')
+                echo 'Setting up network isolation...'
+                ansible-playbook site.yml --tags network-isolation $ansible_opts
+                ;;
+            'control-plane')
+                echo 'Deploying control plane...'
+                ansible-playbook site.yml --tags control-plane $ansible_opts
+                ;;
+            'data-plane')
+                echo 'Configuring data plane...'
+                ansible-playbook site.yml --tags data-plane $ansible_opts
+                ;;
+            'validation')
+                echo 'Running validation...'
+                ansible-playbook site.yml --tags validation $ansible_opts
+                ;;
+            'full')
+                echo 'Running complete deployment...'
+                ansible-playbook site.yml $ansible_opts
+                ;;
+            'optional')
+                echo 'Enabling optional services (Heat, Swift)...'
+                ansible-playbook optional-services.yml $ansible_opts
+                ;;
+            *)
+                echo 'Unknown phase: $phase'
+                exit 1
+                ;;
+        esac
+    "
+    
+    # Execute deployment on bastion
+    print_header "Running $phase phase on bastion host..."
+    if command -v sshpass &> /dev/null && [[ -n "$bastion_password" ]]; then
+        sshpass -p "$bastion_password" ssh -o StrictHostKeyChecking=no -p "$bastion_port" "$bastion_user@$bastion_host" "$deployment_cmd"
+    else
+        ssh -o StrictHostKeyChecking=no -p "$bastion_port" "$bastion_user@$bastion_host" "$deployment_cmd"
+    fi
 }
 
 # Main execution
