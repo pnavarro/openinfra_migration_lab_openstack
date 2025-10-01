@@ -75,7 +75,6 @@ all:
     # OPTIONAL: Network configuration (usually defaults work)
     rhoso_external_ip_bastion: "{rhoso_external_ip_bastion}"         # External IP for bastion
 
-# All operations run on the bastion host
 bastion:
   hosts:
     bastion-jumphost:
@@ -83,24 +82,30 @@ bastion:
       ansible_user: "{{ bastion_user }}"
       ansible_port: "{{ bastion_port }}"
       ansible_ssh_pass: "{{ bastion_password }}"
+      ansible_python_interpreter: /usr/bin/python3.11
+      # Uncomment if using SSH key authentication instead of password
+      # ansible_ssh_private_key_file: "path/to/your/ssh/key"
 
-# NFS server operations delegated from bastion
+# NFS server operations via SSH jump host (bastion)
 nfsserver:
   hosts:
     nfs-server:
       ansible_host: "{{ nfs_server_hostname }}"
       ansible_user: "cloud-user"
       ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
-      delegate_to: bastion-jumphost
+      # SSH through bastion host
+      ansible_ssh_common_args: '-o ProxyCommand="sshpass -p {{ bastion_password }} ssh -W %h:%p -p {{ bastion_port }} {{ bastion_user }}@{{ bastion_hostname }}"'
 
-# Compute node operations delegated from bastion  
+# Compute node operations via SSH jump host (bastion)
 compute_nodes:
   hosts:
     compute01:
       ansible_host: "{{ compute_hostname }}"
       ansible_user: "cloud-user"
       ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
-      delegate_to: bastion-jumphost
+      # SSH through bastion host
+      ansible_ssh_common_args: '-o ProxyCommand="sshpass -p {{ bastion_password }} ssh -W %h:%p -p {{ bastion_port }} {{ bastion_user }}@{{ bastion_hostname }}"'
+
 EOF
 ----
 
