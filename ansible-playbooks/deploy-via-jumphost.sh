@@ -200,17 +200,9 @@ run_deployment() {
     # Copy all necessary files
     cp -r ./* "$temp_dir/"
     
-    # Update inventory to use correct Python interpreter and ensure sshpass is available
-    if [[ -f "$temp_dir/inventory/hosts.yml" ]]; then
-        # Add Python 3.11 interpreter to the inventory
-        if ! grep -q "ansible_python_interpreter" "$temp_dir/inventory/hosts.yml"; then
-            sed -i '/bastion:/a\      ansible_python_interpreter: /usr/bin/python3.11' "$temp_dir/inventory/hosts.yml"
-        fi
-        
-        # Ensure sshpass is available for SSH proxy commands
-        if ! command -v sshpass &> /dev/null; then
-            print_warning "sshpass not found. Installing sshpass on bastion for SSH proxy functionality..."
-        fi
+    # Ensure sshpass is available for SSH proxy commands
+    if ! command -v sshpass &> /dev/null; then
+        print_warning "sshpass not found. Installing sshpass on bastion for SSH proxy functionality..."
     fi
     
     if command -v sshpass &> /dev/null && [[ -n "$bastion_password" ]]; then
