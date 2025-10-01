@@ -144,7 +144,7 @@ run_deployment() {
     # Setup deployment environment on bastion
     print_status "Setting up deployment environment on bastion..."
     local setup_commands="
-        mkdir -p /home/$bastion_user/rhoso-deployment/ansible-playbooks
+        mkdir -p /home/$bastion_user/rhoso-deployment
         
         # Install required packages if not present
         if ! command -v ansible &> /dev/null; then
@@ -205,8 +205,12 @@ run_deployment() {
     local temp_dir="/tmp/rhoso-deploy-$$"
     mkdir -p "$temp_dir"
     
-    # Copy all necessary files
-    cp -r ./* "$temp_dir/"
+    # Copy the entire project structure (ansible-playbooks and content directories)
+    # We need to go up one level to copy both ansible-playbooks and content
+    cd ..
+    cp -r ansible-playbooks "$temp_dir/"
+    cp -r content "$temp_dir/"
+    cd ansible-playbooks
     
     # Ensure sshpass is available for SSH proxy commands
     if ! command -v sshpass &> /dev/null; then
@@ -214,9 +218,9 @@ run_deployment() {
     fi
     
     if command -v sshpass &> /dev/null && [[ -n "$bastion_password" ]]; then
-        sshpass -p "$bastion_password" scp -o StrictHostKeyChecking=no -P "$bastion_port" -r "$temp_dir"/* "$bastion_user@$bastion_host:/home/$bastion_user/rhoso-deployment/ansible-playbooks/"
+        sshpass -p "$bastion_password" scp -o StrictHostKeyChecking=no -P "$bastion_port" -r "$temp_dir"/* "$bastion_user@$bastion_host:/home/$bastion_user/rhoso-deployment/"
     else
-        scp -o StrictHostKeyChecking=no -P "$bastion_port" -r "$temp_dir"/* "$bastion_user@$bastion_host:/home/$bastion_user/rhoso-deployment/ansible-playbooks/"
+        scp -o StrictHostKeyChecking=no -P "$bastion_port" -r "$temp_dir"/* "$bastion_user@$bastion_host:/home/$bastion_user/rhoso-deployment/"
     fi
     
     rm -rf "$temp_dir"
