@@ -27,7 +27,7 @@
   tags:
     - security
 
-- name: Configure NFS Server (executed from bastion via SSH)
+- name: Configure NFS Server (via bastion jump host)
   hosts: bastion
   become: false
   gather_facts: false

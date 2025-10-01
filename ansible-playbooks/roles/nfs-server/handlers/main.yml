@@ -1,3 +1,8 @@
 ---
 # NFS Server handlers
-# Note: With SSH-based approach, handlers are not needed as service management is handled directly
+- name: restart nfs-server
+  systemd:
+    name: nfs-server
+    state: restarted
+  delegate_to: nfs-server
+  become: true

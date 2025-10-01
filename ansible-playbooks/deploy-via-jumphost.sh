@@ -150,9 +150,19 @@ run_deployment() {
         if ! command -v ansible &> /dev/null; then
             echo 'Installing Ansible...'
             if command -v dnf &> /dev/null; then
-                sudo dnf install -y ansible python3-pip || echo 'Failed to install via dnf'
+                sudo dnf install -y ansible python3-pip sshpass || echo 'Failed to install via dnf'
             elif command -v yum &> /dev/null; then
-                sudo yum install -y ansible python3-pip || echo 'Failed to install via yum'
+                sudo yum install -y ansible python3-pip sshpass || echo 'Failed to install via yum'
+            fi
+        fi
+        
+        # Ensure sshpass is available for SSH proxy functionality
+        if ! command -v sshpass &> /dev/null; then
+            echo 'Installing sshpass for SSH proxy functionality...'
+            if command -v dnf &> /dev/null; then
+                sudo dnf install -y sshpass || echo 'Failed to install sshpass via dnf'
+            elif command -v yum &> /dev/null; then
+                sudo yum install -y sshpass || echo 'Failed to install sshpass via yum'
             fi
         fi
         
@@ -190,11 +200,16 @@ run_deployment() {
     # Copy all necessary files
     cp -r ./* "$temp_dir/"
     
-    # Update inventory to use correct Python interpreter
+    # Update inventory to use correct Python interpreter and ensure sshpass is available
     if [[ -f "$temp_dir/inventory/hosts.yml" ]]; then
         # Add Python 3.11 interpreter to the inventory
         if ! grep -q "ansible_python_interpreter" "$temp_dir/inventory/hosts.yml"; then
             sed -i '/bastion:/a\      ansible_python_interpreter: /usr/bin/python3.11' "$temp_dir/inventory/hosts.yml"
+        fi
+        
+        # Ensure sshpass is available for SSH proxy commands
+        if ! command -v sshpass &> /dev/null; then
+            print_warning "sshpass not found. Installing sshpass on bastion for SSH proxy functionality..."
         fi
     fi
     

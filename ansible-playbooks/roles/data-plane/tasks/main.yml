@@ -6,41 +6,55 @@
     state: present
     src: "{{ ansible_env.HOME }}/{{ files_directory }}/osp-ng-dataplane-netconfig.yaml"
 
-- name: Set hostname for compute node via SSH
-  shell: |
-    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ compute_hostname }} "sudo hostnamectl set-hostname {{ compute_nodes[0].hostname }}"
-  register: hostname_result
-  changed_when: true
+- name: Set hostname for compute node
+  hostname:
+    name: "{{ compute_nodes[0].hostname }}"
+  delegate_to: compute01
+  become: true
 
-- name: Configure static eth1 interface for control plane via SSH
-  shell: |
-    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ compute_hostname }} "sudo nmcli con add con-name 'static-eth1' ifname eth1 type ethernet ip4 {{ compute_nodes[0].ctlplane_ip }}/24 ipv4.dns '172.22.0.89'"
-  register: eth1_config_result
-  changed_when: true
+- name: Configure static eth1 interface for control plane
+  community.general.nmcli:
+    conn_name: "static-eth1"
+    ifname: eth1
+    type: ethernet
+    ip4: "{{ compute_nodes[0].ctlplane_ip }}/24"
+    dns4:
+      - "172.22.0.89"
+    state: present
+  delegate_to: compute01
+  become: true
 
-- name: Activate static-eth1 connection via SSH
-  shell: |
-    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ compute_hostname }} "sudo nmcli con up 'static-eth1'"
-  register: eth1_activate_result
-  changed_when: true
+- name: Activate static-eth1 connection
+  community.general.nmcli:
+    conn_name: "static-eth1"
+    state: up
+  delegate_to: compute01
+  become: true
 
-- name: Configure eth0 DHCP connection via SSH
-  shell: |
-    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ compute_hostname }} "sudo nmcli con add type ethernet ifname eth0 con-name eth0-dhcp ipv4.method auto ipv6.method ignore"
-  register: eth0_config_result
-  changed_when: true
+- name: Configure eth0 DHCP connection
+  community.general.nmcli:
+    conn_name: "eth0-dhcp"
+    ifname: eth0
+    type: ethernet
+    method4: auto
+    method6: ignore
+    state: present
+  delegate_to: compute01
+  become: true
 
-- name: Activate eth0-dhcp connection via SSH
-  shell: |
-    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ compute_hostname }} "sudo nmcli con up eth0-dhcp"
-  register: eth0_activate_result
-  changed_when: true
+- name: Activate eth0-dhcp connection
+  community.general.nmcli:
+    conn_name: "eth0-dhcp"
+    state: up
+  delegate_to: compute01
+  become: true
 
-- name: Set stable ID for eth0 connection via SSH
-  shell: |
-    ssh -i /home/{{ bastion_user }}/.ssh/{{ guid }}key.pem -o StrictHostKeyChecking=no cloud-user@{{ compute_hostname }} "sudo nmcli con mod eth0-dhcp connection.stable-id 'user-set'"
-  register: eth0_stable_result
-  changed_when: true
+- name: Set stable ID for eth0 connection
+  community.general.nmcli:
+    conn_name: "eth0-dhcp"
+    stable_id: "user-set"
+  delegate_to: compute01
+  become: true
 
 - name: Read SSH key files from remote host
   ansible.builtin.slurp:

@@ -46,7 +46,13 @@ You must provide the following credentials:
 
 ### SSH Jump Host Scenario (Recommended)
 
-If you connect to your bastion via SSH (e.g., `ssh lab-user@ssh.ocpvdev01.rhdp.net -p 31295`), follow these steps:
+This deployment method is designed for environments where the OpenShift cluster can only be reached through a bastion/jump host. The playbooks will connect to the bastion host and then use SSH proxy commands to reach internal hosts (NFS server, compute nodes).
+
+#### Prerequisites
+
+1. **SSH Access to Bastion**: You must be able to SSH to your bastion host
+2. **sshpass**: Install `sshpass` on your workstation for password-based SSH connections
+3. **SSH Keys**: Ensure your lab SSH keys are available on the bastion host at `/home/lab-user/.ssh/`
 
 #### 1. Configure Inventory
 
@@ -58,6 +64,7 @@ lab_guid: "your-lab-guid"                     # e.g., "a1b2c"
 bastion_hostname: "ssh.ocpvdev01.rhdp.net"    # Your actual bastion hostname
 bastion_port: "31295"                         # Your actual SSH port
 bastion_password: "your-bastion-password"     # Your actual password
+bastion_user: "lab-user"                      # Usually lab-user
 
 # REQUIRED: Add your Red Hat credentials
 registry_username: "your-registry-service-account"
@@ -65,19 +72,36 @@ registry_password: "your-registry-token"
 rhc_username: "your-rh-username"
 rhc_password: "your-rh-password"
 
+# REQUIRED: OpenShift Console URL and admin password
+ocp_console_url: "https://console-openshift-console.apps.cluster-xyz.example.com"
+ocp_admin_password: "your-ocp-admin-password"
+
+# OPTIONAL: Internal hostnames (usually defaults work)
+nfs_server_hostname: "nfsserver"              # Internal hostname for NFS server
+compute_hostname: "compute01"                 # Internal hostname for compute node
+
 # OPTIONAL: External IPs for OpenShift worker nodes (update if different)
 rhoso_external_ip_worker_1: "172.21.0.21"    # External IP for worker node 1
 rhoso_external_ip_worker_2: "172.21.0.22"    # External IP for worker node 2
 rhoso_external_ip_worker_3: "172.21.0.23"    # External IP for worker node 3
 ```
 
-#### 2. Check Configuration
+#### 2. Optional: Configure SSH (Alternative Method)
+
+For better SSH management, you can copy `ssh-config.template` to `~/.ssh/config` and update it with your values. This allows direct SSH to internal hosts:
+
+```bash
+cp ssh-config.template ~/.ssh/config
+# Edit ~/.ssh/config with your actual values
+```
+
+#### 3. Check Configuration
 
 ```bash
 ./deploy-via-jumphost.sh --check-inventory
 ```
 
-#### 3. Run Deployment
+#### 4. Run Deployment
 
 ```bash
 # Full deployment
@@ -90,6 +114,13 @@ rhoso_external_ip_worker_3: "172.21.0.23"    # External IP for worker node 3
 # Dry run (check mode)
 ./deploy-via-jumphost.sh --dry-run full
 ```
+
+#### Troubleshooting SSH Jump Host Issues
+
+1. **SSH Connection Failures**: Ensure `sshpass` is installed and your bastion credentials are correct
+2. **Permission Denied**: Verify SSH keys are present on bastion at `/home/lab-user/.ssh/LAB_GUIDkey.pem`
+3. **Proxy Command Errors**: Check that internal hostnames (nfsserver, compute01) are resolvable from bastion
+4. **Timeout Issues**: Internal hosts may take time to boot; retry after a few minutes
 
 ### Direct Bastion Access Scenario
 
