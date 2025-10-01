@@ -166,22 +166,30 @@ run_deployment() {
             fi
         fi
         
-        # Ensure kubernetes library is available for both Python versions
-        python3 -c 'import kubernetes' 2>/dev/null || {
-            echo 'Installing kubernetes library for default python3...'
-            python3 -m pip install --user kubernetes openshift
-        }
+        # Install required Python libraries for Ansible and Kubernetes operations
+        echo 'Installing required Python libraries...'
         
-        # Also ensure it's available for Python 3.11 (which Ansible uses)
+        # Install for default python3
+        python3 -m pip install --user --upgrade pip
+        python3 -m pip install --user kubernetes openshift jmespath pyyaml requests urllib3
+        
+        # Also ensure libraries are available for Python 3.11 (which Ansible uses)
         if command -v python3.11 &> /dev/null; then
-            python3.11 -c 'import kubernetes' 2>/dev/null || {
-                echo 'Installing kubernetes library for Python 3.11...'
-                # Install pip for Python 3.11 if not available
-                if ! python3.11 -m pip --version &> /dev/null; then
-                    sudo dnf install -y python3.11-pip
-                fi
-                python3.11 -m pip install --user kubernetes openshift
-            }
+            echo 'Installing libraries for Python 3.11...'
+            # Install pip for Python 3.11 if not available
+            if ! python3.11 -m pip --version &> /dev/null; then
+                sudo dnf install -y python3.11-pip || sudo yum install -y python3.11-pip || echo 'Could not install python3.11-pip'
+            fi
+            python3.11 -m pip install --user --upgrade pip
+            python3.11 -m pip install --user kubernetes openshift jmespath pyyaml requests urllib3
+        fi
+        
+        # Try installing via system packages as fallback
+        echo 'Installing system packages as fallback...'
+        if command -v dnf &> /dev/null; then
+            sudo dnf install -y python3-kubernetes python3-jmespath python3-yaml python3-requests || echo 'Some system packages failed to install'
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y python3-kubernetes python3-jmespath python3-yaml python3-requests || echo 'Some system packages failed to install'
         fi
     "
     
