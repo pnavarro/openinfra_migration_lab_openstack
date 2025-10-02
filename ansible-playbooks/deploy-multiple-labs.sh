@@ -297,35 +297,81 @@ deploy_lab() {
 
     # Create a temporary inventory file for this lab
     local temp_inventory=$(mktemp)
+    
+    # Create lab-specific inventory based on template
     cat > "$temp_inventory" << EOF
-# Temporary inventory for lab $lab_id
-bastion_hostname: "${LAB_CONFIG[bastion_hostname]}"
-bastion_port: "${LAB_CONFIG[bastion_port]}"
-bastion_user: "${LAB_CONFIG[bastion_user]:-lab-user}"
-bastion_password: "${LAB_CONFIG[bastion_password]}"
+---
+# Ansible inventory for RHOSO deployment via SSH jump host (bastion)
+# Lab-specific inventory for: $lab_id
 
-# Lab-specific configuration
-lab_guid: "${LAB_CONFIG[guid]:-$lab_id}"
-nfs_server_hostname: "nfsserver"
-compute_hostname: "compute01"
+all:
+  vars:
+    # Lab-specific variables
+    lab_guid: "${LAB_CONFIG[guid]:-$lab_id}"
+    bastion_user: "${LAB_CONFIG[bastion_user]:-lab-user}"
+    bastion_hostname: "${LAB_CONFIG[bastion_hostname]}"
+    bastion_port: "${LAB_CONFIG[bastion_port]}"
+    bastion_password: "${LAB_CONFIG[bastion_password]}"
+    
+    # OpenShift Console URL and credentials  
+    ocp_console_url: "${LAB_CONFIG[ocp_console_url]:-https://console.example.com}"
+    ocp_admin_password: "${LAB_CONFIG[ocp_admin_password]:-changeme}"
+    
+    # Red Hat Registry credentials (will be injected by deploy-via-jumphost.sh)
+    registry_username: ""
+    registry_password: ""
+    
+    # Subscription Manager credentials (will be injected by deploy-via-jumphost.sh)
+    rhc_username: ""
+    rhc_password: ""
+    
+    # Internal lab hostnames (accessed from bastion)
+    nfs_server_hostname: "nfsserver"
+    compute_hostname: "compute01"
+    
+    # External IP configuration for OpenShift worker nodes
+    rhoso_external_ip_worker_1: "${LAB_CONFIG[rhoso_external_ip_worker_1]:-172.21.0.21}"
+    rhoso_external_ip_worker_2: "${LAB_CONFIG[rhoso_external_ip_worker_2]:-172.21.0.22}"
+    rhoso_external_ip_worker_3: "${LAB_CONFIG[rhoso_external_ip_worker_3]:-172.21.0.23}"
+    
+    # Bastion external IP for final network configuration
+    rhoso_external_ip_bastion: "${LAB_CONFIG[rhoso_external_ip_bastion]:-172.21.0.50}"
 
-# External IP addresses
-rhoso_external_ip_worker_1: "${LAB_CONFIG[rhoso_external_ip_worker_1]:-}"
-rhoso_external_ip_worker_2: "${LAB_CONFIG[rhoso_external_ip_worker_2]:-}"
-rhoso_external_ip_worker_3: "${LAB_CONFIG[rhoso_external_ip_worker_3]:-}"
-rhoso_external_ip_bastion: "${LAB_CONFIG[rhoso_external_ip_bastion]:-}"
+# All operations run on the bastion host
+bastion:
+  hosts:
+    bastion-jumphost:
+      ansible_host: "${LAB_CONFIG[bastion_hostname]}"
+      ansible_user: "${LAB_CONFIG[bastion_user]:-lab-user}"
+      ansible_port: "${LAB_CONFIG[bastion_port]}"
+      ansible_ssh_pass: "${LAB_CONFIG[bastion_password]}"
+      ansible_python_interpreter: /usr/bin/python3.11
+
+# NFS server configuration (accessed via bastion)
+nfsserver:
+  hosts:
+    nfs-server:
+      ansible_host: "nfsserver"
+      ansible_user: "cloud-user"
+      ansible_ssh_private_key_file: "/home/${LAB_CONFIG[bastion_user]:-lab-user}/.ssh/${LAB_CONFIG[guid]:-$lab_id}key.pem"
+      # SSH through bastion host
+      ansible_ssh_common_args: '-o ProxyCommand="sshpass -p ${LAB_CONFIG[bastion_password]} ssh -W %h:%p -p ${LAB_CONFIG[bastion_port]} ${LAB_CONFIG[bastion_user]:-lab-user}@${LAB_CONFIG[bastion_hostname]}"'
+
+# Compute nodes configuration (accessed via bastion)
+compute_nodes:
+  hosts:
+    compute01:
+      ansible_host: "compute01"
+      ansible_user: "cloud-user"
+      ansible_ssh_private_key_file: "/home/${LAB_CONFIG[bastion_user]:-lab-user}/.ssh/${LAB_CONFIG[guid]:-$lab_id}key.pem"
+      # SSH through bastion host
+      ansible_ssh_common_args: '-o ProxyCommand="sshpass -p ${LAB_CONFIG[bastion_password]} ssh -W %h:%p -p ${LAB_CONFIG[bastion_port]} ${LAB_CONFIG[bastion_user]:-lab-user}@${LAB_CONFIG[bastion_hostname]}"'
 EOF
 
-    # Run the deployment
-    local deploy_script="./deploy-via-jumphost.sh"
-    if [[ ! -f "$deploy_script" ]]; then
-        print_error "Deploy script not found: $deploy_script"
-        rm -f "$temp_inventory"
-        return 1
-    fi
-
+    # Run the deployment using the custom inventory
     print_info "Running deployment for lab $lab_id..."
-    if "$deploy_script" --inventory "$temp_inventory" --credentials "$credentials_file" > "deployment_${lab_id}.log" 2>&1; then
+    
+    if ./deploy-via-jumphost.sh --inventory "$temp_inventory" --credentials "$credentials_file" > "deployment_${lab_id}.log" 2>&1; then
         print_success "Lab $lab_id deployment completed successfully"
         rm -f "$temp_inventory"
         return 0

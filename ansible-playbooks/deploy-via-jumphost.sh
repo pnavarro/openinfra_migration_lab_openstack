@@ -40,6 +40,7 @@ show_usage() {
     echo "  -d, --dry-run          Run in check mode (no changes)"
     echo "  -v, --verbose          Enable verbose output"
     echo "  --credentials FILE     Use external credentials file (YAML format)"
+    echo "  --inventory FILE       Use custom inventory file (default: inventory/hosts.yml)"
     echo ""
     echo "Available phases:"
     echo "  prerequisites  - Install required operators (NMState, MetalLB)"
@@ -60,6 +61,7 @@ show_usage() {
     echo "  $0 -d control-plane                   # Dry run of control plane deployment"
     echo "  $0 -v prerequisites                   # Verbose prerequisites installation"
     echo "  $0 --credentials ../my_credentials.yml full  # Use external credentials file"
+    echo "  $0 --inventory ../lab1/hosts.yml full      # Use custom inventory file"
     echo ""
     echo "Credentials File Format:"
     echo "  Create a YAML file with your Red Hat credentials:"
@@ -114,8 +116,8 @@ check_prerequisites() {
     print_status "Found Ansible version: $ansible_version"
     
     # Check if inventory file exists
-    if [[ ! -f "inventory/hosts.yml" ]]; then
-        print_error "Inventory file inventory/hosts.yml not found."
+    if [[ ! -f "$inventory_file" ]]; then
+        print_error "Inventory file $inventory_file not found."
         exit 1
     fi
     
@@ -124,16 +126,17 @@ check_prerequisites() {
 
 # Function to check inventory configuration
 check_inventory() {
+    local inventory_file="${1:-inventory/hosts.yml}"
     print_header "Checking inventory configuration..."
     
     # Check for changeme values, but skip credential fields if they're provided via file
     local has_changeme=false
     
-    if grep -q "changeme" inventory/hosts.yml; then
+    if grep -q "changeme" "$inventory_file"; then
         # Check if the changeme values are in credential fields and we have credentials from file
         if [[ -n "${CRED_REGISTRY_USERNAME:-}" ]]; then
             # We have credentials from file, so check only non-credential changeme values
-            if grep -v -E "(registry_username|registry_password|rhc_username|rhc_password)" inventory/hosts.yml | grep -q "changeme"; then
+            if grep -v -E "(registry_username|registry_password|rhc_username|rhc_password)" "$inventory_file" | grep -q "changeme"; then
                 has_changeme=true
             fi
         else
@@ -144,7 +147,7 @@ check_inventory() {
     if [[ "$has_changeme" == "true" ]]; then
         print_error "Inventory file contains default 'changeme' values."
         echo ""
-        echo "Please update the following in inventory/hosts.yml:"
+        echo "Please update the following in $inventory_file:"
         echo "  - lab_guid: Your lab GUID"
         echo "  - bastion_hostname: Your bastion hostname (e.g., ssh.ocpvdev01.rhdp.net)"
         echo "  - bastion_port: Your SSH port (e.g., 31295)"
@@ -163,9 +166,9 @@ check_inventory() {
     
     # Test SSH connectivity to bastion
     print_status "Testing SSH connectivity to bastion..."
-    local bastion_host=$(grep "bastion_hostname:" inventory/hosts.yml | cut -d'"' -f2)
-    local bastion_port=$(grep "bastion_port:" inventory/hosts.yml | cut -d'"' -f2)
-    local bastion_user=$(grep "bastion_user:" inventory/hosts.yml | cut -d'"' -f2)
+    local bastion_host=$(grep "bastion_hostname:" "$inventory_file" | cut -d'"' -f2)
+    local bastion_port=$(grep "bastion_port:" "$inventory_file" | cut -d'"' -f2)
+    local bastion_user=$(grep "bastion_user:" "$inventory_file" | cut -d'"' -f2)
     
     if [[ "$bastion_host" == *"example.com"* ]]; then
         print_warning "Bastion hostname still contains 'example.com'. Please update it."
@@ -188,12 +191,13 @@ run_deployment() {
     local phase="$1"
     local dry_run="$2"
     local verbose="$3"
+    local inventory_file="${4:-inventory/hosts.yml}"
     
     # Extract bastion connection details from inventory
-    local bastion_host=$(grep "bastion_hostname:" inventory/hosts.yml | sed "s/.*bastion_hostname: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
-    local bastion_port=$(grep "bastion_port:" inventory/hosts.yml | sed "s/.*bastion_port: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
-    local bastion_user=$(grep "bastion_user:" inventory/hosts.yml | sed "s/.*bastion_user: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
-    local bastion_password=$(grep "bastion_password:" inventory/hosts.yml | sed "s/.*bastion_password: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
+    local bastion_host=$(grep "bastion_hostname:" "$inventory_file" | sed "s/.*bastion_hostname: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
+    local bastion_port=$(grep "bastion_port:" "$inventory_file" | sed "s/.*bastion_port: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
+    local bastion_user=$(grep "bastion_user:" "$inventory_file" | sed "s/.*bastion_user: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
+    local bastion_password=$(grep "bastion_password:" "$inventory_file" | sed "s/.*bastion_password: *['\"]\\?\\([^'\"]*\\)['\"]\\?.*/\\1/")
     
     [[ -z "$bastion_user" ]] && bastion_user="lab-user"
     
@@ -270,18 +274,24 @@ run_deployment() {
     cp -r content "$temp_dir/"
     cd ansible-playbooks
     
+    # Copy custom inventory file if provided
+    if [[ "$inventory_file" != "inventory/hosts.yml" ]]; then
+        print_status "Copying custom inventory file..."
+        cp "$inventory_file" "$temp_dir/ansible-playbooks/inventory/hosts.yml"
+    fi
+    
     # If credentials were provided via file, inject them into the inventory
     if [[ -n "${CRED_REGISTRY_USERNAME:-}" ]]; then
         print_status "Injecting credentials from file into inventory..."
-        local inventory_file="$temp_dir/ansible-playbooks/inventory/hosts.yml"
+        local target_inventory="$temp_dir/ansible-playbooks/inventory/hosts.yml"
         
         # Update registry credentials
-        sed -i "s/registry_username: \"\"/registry_username: \"$CRED_REGISTRY_USERNAME\"/" "$inventory_file"
-        sed -i "s/registry_password: \"\"/registry_password: \"$CRED_REGISTRY_PASSWORD\"/" "$inventory_file"
+        sed -i "s/registry_username: \"\"/registry_username: \"$CRED_REGISTRY_USERNAME\"/" "$target_inventory"
+        sed -i "s/registry_password: \"\"/registry_password: \"$CRED_REGISTRY_PASSWORD\"/" "$target_inventory"
         
         # Update RHC credentials  
-        sed -i "s/rhc_username: \"\"/rhc_username: \"$CRED_RHC_USERNAME\"/" "$inventory_file"
-        sed -i "s/rhc_password: \"\"/rhc_password: \"$CRED_RHC_PASSWORD\"/" "$inventory_file"
+        sed -i "s/rhc_username: \"\"/rhc_username: \"$CRED_RHC_USERNAME\"/" "$target_inventory"
+        sed -i "s/rhc_password: \"\"/rhc_password: \"$CRED_RHC_PASSWORD\"/" "$target_inventory"
         
         print_status "Credentials injected into inventory"
     fi
@@ -382,6 +392,7 @@ main() {
     local dry_run="false"
     local verbose="false"
     local credentials_file=""
+    local inventory_file="inventory/hosts.yml"
     
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -412,6 +423,16 @@ main() {
                     exit 1
                 fi
                 ;;
+            --inventory)
+                if [[ -n "${2:-}" ]]; then
+                    inventory_file="$2"
+                    shift 2
+                else
+                    print_error "--inventory requires a file path"
+                    show_usage
+                    exit 1
+                fi
+                ;;
             -*)
                 print_error "Unknown option: $1"
                 show_usage
@@ -436,17 +457,17 @@ main() {
     check_prerequisites
     
     if [[ "$check_only" == "true" ]]; then
-        check_inventory
+        check_inventory "$inventory_file"
         exit 0
     fi
     
-    if ! check_inventory; then
+    if ! check_inventory "$inventory_file"; then
         print_error "Inventory check failed. Please fix the configuration and try again."
         exit 1
     fi
     
     install_collections
-    run_deployment "$phase" "$dry_run" "$verbose"
+    run_deployment "$phase" "$dry_run" "$verbose" "$inventory_file"
     
     if [[ "$dry_run" == "true" ]]; then
         print_status "Dry run completed successfully!"
