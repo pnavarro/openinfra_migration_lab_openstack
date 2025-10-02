@@ -60,7 +60,7 @@ parse_lab_config() {
             if [[ -n "$current_lab" && -n "$lab_config_file" && "$current_lab" != "prod" ]]; then
                 echo ")" >> "$lab_config_file"
                 ((lab_count++))
-                print_info "Completed parsing lab: $current_lab"
+                print_info "Completed parsing lab: $current_lab" >&2
             fi
 
             # Start new lab - clean up the lab ID
@@ -78,7 +78,7 @@ parse_lab_config() {
             lab_config_file="$temp_dir/lab_configs/lab_${current_lab}.conf"
             in_data_section=false
 
-            print_status "Found lab: $current_lab"
+            print_status "Found lab: $current_lab" >&2
             echo "LAB_ID=\"$current_lab\"" > "$lab_config_file"
             echo "declare -A LAB_CONFIG=(" >> "$lab_config_file"
             continue
@@ -92,7 +92,7 @@ parse_lab_config() {
                 echo "  [\"bastion_hostname\"]=\"$bastion_host\"" >> "$lab_config_file"
                 echo "  [\"bastion_port\"]=\"$bastion_port\"" >> "$lab_config_file"
                 echo "  [\"bastion_user\"]=\"lab-user\"" >> "$lab_config_file"
-                print_info "  SSH: lab-user@$bastion_host:$bastion_port"
+                print_info "  SSH: lab-user@$bastion_host:$bastion_port" >&2
             fi
             continue
         fi
@@ -102,7 +102,7 @@ parse_lab_config() {
             local bastion_password="${BASH_REMATCH[1]}"
             if [[ -n "$lab_config_file" && "$current_lab" != "prod" ]]; then
                 echo "  [\"bastion_password\"]=\"$bastion_password\"" >> "$lab_config_file"
-                print_info "  Password: ***"
+                print_info "  Password: ***" >&2
             fi
             continue
         fi
@@ -112,7 +112,7 @@ parse_lab_config() {
             local admin_password="${BASH_REMATCH[1]}"
             if [[ -n "$lab_config_file" && "$current_lab" != "prod" ]]; then
                 echo "  [\"ocp_admin_password\"]=\"$admin_password\"" >> "$lab_config_file"
-                print_info "  Admin Password: ***"
+                print_info "  Admin Password: ***" >&2
             fi
             continue
         fi
@@ -142,7 +142,7 @@ parse_lab_config() {
 
             if [[ -n "$lab_config_file" && -n "$value" && "$value" != ">" && "$current_lab" != "prod" ]]; then
                 echo "  [\"$key\"]=\"$value\"" >> "$lab_config_file"
-                print_info "  Data: $key = $value"
+                print_info "  Data: $key = $value" >&2
             fi
             continue
         fi
@@ -153,7 +153,7 @@ parse_lab_config() {
             local ip_value="${BASH_REMATCH[2]}"
             if [[ -n "$lab_config_file" && "$current_lab" != "prod" ]]; then
                 echo "  [\"rhoso_external_ip_${ip_type}\"]=\"$ip_value\"" >> "$lab_config_file"
-                print_info "  External IP ${ip_type}: $ip_value"
+                print_info "  External IP ${ip_type}: $ip_value" >&2
             fi
             continue
         fi
@@ -164,7 +164,7 @@ parse_lab_config() {
     if [[ -n "$current_lab" && -n "$lab_config_file" && "$current_lab" != "prod" ]]; then
         echo ")" >> "$lab_config_file"
         ((lab_count++))
-        print_info "Completed parsing lab: $current_lab"
+        print_info "Completed parsing lab: $current_lab" >&2
     fi
 
     echo "$lab_count"
