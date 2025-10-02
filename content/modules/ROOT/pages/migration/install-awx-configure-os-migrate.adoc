@@ -197,7 +197,7 @@ Click *Save*.
 1. From the navigation panel, go to *Administration* → *Execution Environments*.
 2. Click *Create Execution Environment* and set the following parameters:
    * **Name:** vmware migration kit execution environment
-   * **Image:** `quay.io/os-migrate/vmware-migration-kit`
+   * **Image:** `quay.io/rhn_engineering_mbultel/osm-fedora`
 3. Click *Create Execution Environment*.
 
 === Creating a Project
@@ -236,6 +236,7 @@ Create the `os_migrate_for_awx.yaml` file that we will use when creating the pro
 [source,bash,role=execute,subs=attributes]
 ----
 cat << EOF > /home/lab-user/os-migrate-env/os_migrate_for_awx.yaml
+os_migrate_tear_down: false
 # osm working directory:
 runner_from_aee: true
 os_migrate_vmw_data_dir: /tmp/os-migrate
