@@ -23,17 +23,12 @@ cd openinfra_migration_lab_openstack/ansible-playbooks
 
 # Copy and configure inventory
 cp inventory/hosts.yml.example inventory/hosts.yml
+cp credentials/credentials.yml.example inventory/credentials.yml
 ----
 
 === 2. Configure Inventory
 
 Edit `inventory/hosts.yml` with your environment details:
-
-[NOTE]
-====
-Fill in the values for registry_username and registry_password, these are the credentials to access the Red Hat registry.
-Fill in the values for rhc_username and rhc_password, these are the credentials to access the Red Hat Customer Portal.
-====
 
 [source,yaml,subs=attributes]
 ----
@@ -109,11 +104,32 @@ compute_nodes:
 EOF
 ----
 
+=== Configure Credentials
+
+[NOTE]
+====
+Fill in the values for registry_username and registry_password, these are the credentials to access the Red Hat registry.
+Fill in the values for rhc_username and rhc_password, these are the credentials to access the Red Hat Customer Portal.
+====
+
+
+Edit `credentials.yml` with your environment details:
+
+[source,yaml,subs=attributes]
+----
+cat << EOF > credentials.yml
+registry_username: "12345678|myserviceaccount"
+registry_password: "eyJhbGciOiJSUzUxMiJ9..."
+rhc_username: "your-rh-username@email.com"
+rhc_password: "YourRHPassword123"
+EOF
+----
+
 === 3. Deploy RHOSO
 
 Execute the following command to deploy RHOSO:
 
 [source,bash]
 ----
-deploy-via-jumphost.sh
+deploy-via-jumphost.sh -- inventory inventory/hosts.yml -- credentials credentials.yml
 ----
