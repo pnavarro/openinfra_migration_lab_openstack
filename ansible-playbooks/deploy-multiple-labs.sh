@@ -12,25 +12,116 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Logging configuration
+LOG_DIR="logs"
+MULTI_LAB_LOG_FILE=""
+DEPLOYMENT_START_TIME=""
+
+# Initialize multi-lab logging
+init_multi_lab_logging() {
+    local timestamp=$(date '+%Y%m%d_%H%M%S')
+    
+    # Create logs directory if it doesn't exist
+    mkdir -p "$LOG_DIR"
+    
+    # Set log file name
+    MULTI_LAB_LOG_FILE="$LOG_DIR/multi_lab_deployment_${timestamp}.log"
+    DEPLOYMENT_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Create log file with header
+    cat > "$MULTI_LAB_LOG_FILE" << EOF
+================================================================================
+Multi-Lab RHOSO Deployment Log
+================================================================================
+Start Time: $DEPLOYMENT_START_TIME
+Host: $(hostname)
+User: $(whoami)
+Working Directory: $(pwd)
+Script: $0
+Arguments: $*
+================================================================================
+
+EOF
+    
+    echo "Multi-lab logging to: $MULTI_LAB_LOG_FILE"
+}
+
+# Function to log message to multi-lab file
+log_multi_lab_message() {
+    local level="$1"
+    local message="$2"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    if [[ -n "$MULTI_LAB_LOG_FILE" ]]; then
+        echo "[$timestamp] [$level] $message" >> "$MULTI_LAB_LOG_FILE"
+    fi
+}
+
 # Print functions
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1" >&2
+    log_multi_lab_message "ERROR" "$1"
 }
 
 print_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
+    log_multi_lab_message "SUCCESS" "$1"
 }
 
 print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
+    log_multi_lab_message "WARNING" "$1"
 }
 
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
+    log_multi_lab_message "INFO" "$1"
 }
 
 print_status() {
     echo -e "${GREEN}[STATUS]${NC} $1"
+    log_multi_lab_message "STATUS" "$1"
+}
+
+# Function to finalize multi-lab deployment log
+finalize_multi_lab_log() {
+    local total_labs="$1"
+    local success_count="$2"
+    local failure_count="$3"
+    local end_time=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    if [[ -n "$MULTI_LAB_LOG_FILE" ]]; then
+        cat >> "$MULTI_LAB_LOG_FILE" << EOF
+
+================================================================================
+Multi-Lab Deployment Summary
+================================================================================
+Start Time: $DEPLOYMENT_START_TIME
+End Time: $end_time
+Duration: $(($(date -d "$end_time" +%s) - $(date -d "$DEPLOYMENT_START_TIME" +%s))) seconds
+Total Labs: $total_labs
+Successful Deployments: $success_count
+Failed Deployments: $failure_count
+Success Rate: $(( success_count * 100 / total_labs ))%
+Overall Status: $([ "$failure_count" -eq 0 ] && echo "SUCCESS" || echo "PARTIAL_SUCCESS")
+Log File: $MULTI_LAB_LOG_FILE
+================================================================================
+
+Individual Lab Logs:
+EOF
+        
+        # List individual lab log files
+        for log_file in "$LOG_DIR"/deployment_*_*.log; do
+            if [[ -f "$log_file" && "$log_file" != "$MULTI_LAB_LOG_FILE" ]]; then
+                echo "  - $(basename "$log_file")" >> "$MULTI_LAB_LOG_FILE"
+            fi
+        done
+        
+        echo "" >> "$MULTI_LAB_LOG_FILE"
+        echo "================================================================================" >> "$MULTI_LAB_LOG_FILE"
+        
+        print_status "Multi-lab deployment log saved to: $MULTI_LAB_LOG_FILE"
+    fi
 }
 
 # Usage function
@@ -283,6 +374,7 @@ deploy_lab() {
     local lab_id="$3"
 
     print_status "Starting deployment for lab: $lab_id"
+    log_multi_lab_message "LAB_START" "Starting deployment for lab: $lab_id"
 
     # Source the lab configuration (disable unbound variable check temporarily)
     set +u
@@ -292,8 +384,13 @@ deploy_lab() {
     # Check if we have required configuration
     if [[ -z "${LAB_CONFIG[bastion_hostname]:-}" || -z "${LAB_CONFIG[bastion_port]:-}" || -z "${LAB_CONFIG[bastion_password]:-}" ]]; then
         print_error "Missing required bastion configuration for lab $lab_id"
+        log_multi_lab_message "LAB_ERROR" "Lab $lab_id: Missing required bastion configuration"
         return 1
     fi
+    
+    # Log lab configuration details
+    log_multi_lab_message "LAB_CONFIG" "Lab $lab_id: Bastion ${LAB_CONFIG[bastion_hostname]}:${LAB_CONFIG[bastion_port]}"
+    log_multi_lab_message "LAB_CONFIG" "Lab $lab_id: GUID ${LAB_CONFIG[guid]:-$lab_id}"
 
     # Create a temporary inventory file for this lab
     local temp_inventory=$(mktemp)
@@ -370,13 +467,28 @@ EOF
 
     # Run the deployment using the custom inventory
     print_info "Running deployment for lab $lab_id..."
+    log_multi_lab_message "LAB_DEPLOY" "Lab $lab_id: Starting deployment execution"
+    
+    local lab_start_time=$(date '+%Y-%m-%d %H:%M:%S')
     
     if ./deploy-via-jumphost.sh --inventory "$temp_inventory" --credentials "$credentials_file" > "deployment_${lab_id}.log" 2>&1; then
+        local lab_end_time=$(date '+%Y-%m-%d %H:%M:%S')
+        local lab_duration=$(($(date -d "$lab_end_time" +%s) - $(date -d "$lab_start_time" +%s)))
+        
         print_success "Lab $lab_id deployment completed successfully"
+        log_multi_lab_message "LAB_SUCCESS" "Lab $lab_id: Deployment completed successfully in ${lab_duration}s"
+        log_multi_lab_message "LAB_LOG" "Lab $lab_id: Individual log saved to deployment_${lab_id}.log"
+        
         rm -f "$temp_inventory"
         return 0
     else
+        local lab_end_time=$(date '+%Y-%m-%d %H:%M:%S')
+        local lab_duration=$(($(date -d "$lab_end_time" +%s) - $(date -d "$lab_start_time" +%s)))
+        
         print_error "Lab $lab_id deployment failed. Check deployment_${lab_id}.log for details"
+        log_multi_lab_message "LAB_FAILURE" "Lab $lab_id: Deployment failed after ${lab_duration}s"
+        log_multi_lab_message "LAB_LOG" "Lab $lab_id: Error log saved to deployment_${lab_id}.log"
+        
         rm -f "$temp_inventory"
         return 1
     fi
@@ -384,6 +496,9 @@ EOF
 
 # Main function
 main() {
+    # Initialize logging first
+    init_multi_lab_logging "$@"
+    
     print_status "Multi-Lab RHOSO Deployment Script"
     print_status "=================================="
 
@@ -500,6 +615,9 @@ main() {
             fi
         fi
     done
+
+    # Finalize multi-lab log
+    finalize_multi_lab_log "$lab_count" "$success_count" "$failure_count"
 
     if [[ "$failure_count" -gt 0 ]]; then
         exit 1

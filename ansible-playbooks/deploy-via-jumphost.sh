@@ -11,21 +11,102 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Logging configuration
+LOG_DIR="logs"
+LOG_FILE=""
+DEPLOYMENT_START_TIME=""
+
+# Initialize logging
+init_logging() {
+    local lab_id="${1:-default}"
+    local timestamp=$(date '+%Y%m%d_%H%M%S')
+    
+    # Create logs directory if it doesn't exist
+    mkdir -p "$LOG_DIR"
+    
+    # Set log file name
+    LOG_FILE="$LOG_DIR/deployment_${lab_id}_${timestamp}.log"
+    DEPLOYMENT_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Create log file with header
+    cat > "$LOG_FILE" << EOF
+================================================================================
+RHOSO Deployment Log
+================================================================================
+Lab ID: $lab_id
+Start Time: $DEPLOYMENT_START_TIME
+Host: $(hostname)
+User: $(whoami)
+Working Directory: $(pwd)
+Script: $0
+Arguments: $*
+================================================================================
+
+EOF
+    
+    echo "Logging to: $LOG_FILE"
+}
+
+# Function to log message to file
+log_message() {
+    local level="$1"
+    local message="$2"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    if [[ -n "$LOG_FILE" ]]; then
+        echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+    fi
+}
+
 # Function to print colored output
 print_status() {
     echo -e "${GREEN}[INFO]${NC} $1"
+    log_message "INFO" "$1"
 }
 
 print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
+    log_message "WARNING" "$1"
 }
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+    log_message "ERROR" "$1"
 }
 
 print_header() {
     echo -e "${BLUE}[DEPLOY]${NC} $1"
+    log_message "DEPLOY" "$1"
+}
+
+# Function to finalize deployment log
+finalize_log() {
+    local exit_code="$1"
+    local phase="$2"
+    local end_time=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    if [[ -n "$LOG_FILE" ]]; then
+        cat >> "$LOG_FILE" << EOF
+
+================================================================================
+Deployment Summary
+================================================================================
+Phase: $phase
+Start Time: $DEPLOYMENT_START_TIME
+End Time: $end_time
+Duration: $(($(date -d "$end_time" +%s) - $(date -d "$DEPLOYMENT_START_TIME" +%s))) seconds
+Exit Code: $exit_code
+Status: $([ "$exit_code" -eq 0 ] && echo "SUCCESS" || echo "FAILED")
+Log File: $LOG_FILE
+================================================================================
+EOF
+        
+        if [[ "$exit_code" -eq 0 ]]; then
+            print_status "Deployment completed successfully. Log saved to: $LOG_FILE"
+        else
+            print_error "Deployment failed. Check log for details: $LOG_FILE"
+        fi
+    fi
 }
 
 # Function to show usage
@@ -393,6 +474,7 @@ main() {
     local verbose="false"
     local credentials_file=""
     local inventory_file="inventory/hosts.yml"
+    local lab_id="default"
     
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -445,9 +527,19 @@ main() {
         esac
     done
     
+    # Extract lab_id from inventory file for logging
+    if [[ -f "$inventory_file" ]]; then
+        lab_id=$(grep "lab_guid:" "$inventory_file" | head -1 | sed 's/.*lab_guid: *"\([^"]*\)".*/\1/' 2>/dev/null || echo "default")
+        [[ "$lab_id" == "changeme" || -z "$lab_id" ]] && lab_id="default"
+    fi
+    
+    # Initialize logging
+    init_logging "$lab_id" "$@"
+    
     print_header "RHOSO Deployment via Jump Host - Phase: $phase"
     print_status "Timestamp: $(date)"
     print_status "Working directory: $(pwd)"
+    print_status "Lab ID: $lab_id"
     
     # Parse credentials file if provided
     if [[ -n "$credentials_file" ]]; then
@@ -456,26 +548,46 @@ main() {
     
     check_prerequisites
     
+    # Set up error handling for logging
+    set +e
+    local exit_code=0
+    
     if [[ "$check_only" == "true" ]]; then
         check_inventory "$inventory_file"
-        exit 0
+        exit_code=$?
+        finalize_log "$exit_code" "check-inventory"
+        exit $exit_code
     fi
     
     if ! check_inventory "$inventory_file"; then
         print_error "Inventory check failed. Please fix the configuration and try again."
+        finalize_log 1 "$phase"
         exit 1
     fi
     
     install_collections
-    run_deployment "$phase" "$dry_run" "$verbose" "$inventory_file"
-    
-    if [[ "$dry_run" == "true" ]]; then
-        print_status "Dry run completed successfully!"
-        print_status "Run without -d/--dry-run to perform actual deployment."
-    else
-        print_status "Deployment phase '$phase' completed successfully!"
-        print_status "Check the README.md for verification commands and troubleshooting."
+    exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        print_error "Failed to install Ansible collections"
+        finalize_log $exit_code "$phase"
+        exit $exit_code
     fi
+    
+    run_deployment "$phase" "$dry_run" "$verbose" "$inventory_file"
+    exit_code=$?
+    
+    if [[ $exit_code -eq 0 ]]; then
+        if [[ "$dry_run" == "true" ]]; then
+            print_status "Dry run completed successfully!"
+            print_status "Run without -d/--dry-run to perform actual deployment."
+        else
+            print_status "Deployment phase '$phase' completed successfully!"
+            print_status "Check the README.md for verification commands and troubleshooting."
+        fi
+    fi
+    
+    finalize_log "$exit_code" "$phase"
+    exit $exit_code
 }
 
 # Run main function with all arguments
