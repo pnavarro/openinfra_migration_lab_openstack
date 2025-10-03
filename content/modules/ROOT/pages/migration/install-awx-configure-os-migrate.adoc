@@ -197,7 +197,7 @@ Click *Save*.
 1. From the navigation panel, go to *Administration* → *Execution Environments*.
 2. Click *Create Execution Environment* and set the following parameters:
    * **Name:** vmware migration kit execution environment
-   * **Image:** `quay.io/rhn_engineering_mbultel/osm-fedora`
+   * **Image:** `quay.io/os-migrate/vmware-migration-kit:stable`
 3. Click *Create Execution Environment*.
 
 === Creating a Project
