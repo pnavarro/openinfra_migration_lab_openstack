@@ -57,7 +57,7 @@
       when: 
         - namespace_check.rc == 0
         - deployment_check.rc == 0
-      changed_when: "'updated" in set_env_result.stdout'
+      changed_when: "'updated' in set_env_result.stdout"
 
     - name: Display environment variable update result
       debug:
