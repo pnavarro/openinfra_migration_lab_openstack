@@ -3,7 +3,7 @@
 # Lab Inventory Generator Script
 # This script parses the lab configuration file and generates individual hosts-{guid}.yml files
 
-set -euo pipefail
+set -uo pipefail
 
 # Color codes for output
 RED='\033[0;31m'
@@ -430,7 +430,13 @@ main() {
     
     for config_file in "$temp_dir"/lab_configs/lab_*.conf; do
         if [[ -f "$config_file" ]]; then
-            if generate_inventory_file "$config_file" "$output_dir" "$dry_run" "$force"; then
+            # Temporarily disable exit on error for this function call
+            set +e
+            generate_inventory_file "$config_file" "$output_dir" "$dry_run" "$force"
+            local exit_code=$?
+            set -e
+            
+            if [[ $exit_code -eq 0 ]]; then
                 ((success_count++))
             else
                 ((skip_count++))
