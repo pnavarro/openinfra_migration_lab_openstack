@@ -16,6 +16,11 @@ LOG_DIR="logs"
 LOG_FILE=""
 DEPLOYMENT_START_TIME=""
 
+# Background process management
+PID_DIR="pids"
+BACKGROUND_MODE=false
+FOLLOW_LOGS=false
+
 # Initialize logging
 init_logging() {
     local lab_id="${1:-default}"
@@ -109,6 +114,218 @@ EOF
     fi
 }
 
+# Function to save background process info
+save_background_process() {
+    local pid="$1"
+    local lab_id="$2"
+    local phase="$3"
+    local log_file="$4"
+    local start_time="$5"
+    
+    mkdir -p "$PID_DIR"
+    
+    cat > "$PID_DIR/${pid}.info" << EOF
+PID=$pid
+LAB_ID=$lab_id
+PHASE=$phase
+LOG_FILE=$log_file
+START_TIME=$start_time
+STATUS=running
+EOF
+    
+    print_status "Background deployment started with PID: $pid"
+    print_status "Log file: $log_file"
+    print_status "Use '$0 --status' to check progress"
+    print_status "Use '$0 --stop $pid' to stop deployment"
+}
+
+# Function to show status of background deployments
+show_background_status() {
+    print_header "Background Deployment Status"
+    
+    if [[ ! -d "$PID_DIR" ]] || [[ -z "$(ls -A "$PID_DIR" 2>/dev/null)" ]]; then
+        print_status "No background deployments found"
+        return 0
+    fi
+    
+    local found_active=false
+    
+    for pid_file in "$PID_DIR"/*.info; do
+        if [[ -f "$pid_file" ]]; then
+            source "$pid_file"
+            local pid=$(basename "$pid_file" .info)
+            
+            # Check if process is still running
+            if kill -0 "$pid" 2>/dev/null; then
+                found_active=true
+                local duration=$(($(date +%s) - $(date -d "$START_TIME" +%s 2>/dev/null || date +%s)))
+                print_status "🔄 PID: $pid | Lab: $LAB_ID | Phase: $PHASE | Duration: ${duration}s"
+                print_status "   Log: $LOG_FILE"
+            else
+                # Process finished, update status
+                sed -i 's/STATUS=running/STATUS=finished/' "$pid_file"
+                print_status "✅ PID: $pid | Lab: $LAB_ID | Phase: $PHASE | Status: Finished"
+                print_status "   Log: $LOG_FILE"
+            fi
+        fi
+    done
+    
+    if [[ "$found_active" == "false" ]]; then
+        print_status "No active background deployments"
+    fi
+}
+
+# Function to stop background deployment
+stop_background_deployment() {
+    local target_pid="$1"
+    
+    if [[ ! -f "$PID_DIR/${target_pid}.info" ]]; then
+        print_error "No background deployment found with PID: $target_pid"
+        return 1
+    fi
+    
+    if kill -0 "$target_pid" 2>/dev/null; then
+        print_status "Stopping deployment with PID: $target_pid"
+        
+        # Try graceful shutdown first
+        kill -TERM "$target_pid" 2>/dev/null
+        sleep 5
+        
+        # Force kill if still running
+        if kill -0 "$target_pid" 2>/dev/null; then
+            print_warning "Forcing termination of PID: $target_pid"
+            kill -KILL "$target_pid" 2>/dev/null
+        fi
+        
+        # Update status
+        if [[ -f "$PID_DIR/${target_pid}.info" ]]; then
+            sed -i 's/STATUS=running/STATUS=stopped/' "$PID_DIR/${target_pid}.info"
+        fi
+        
+        print_status "Deployment stopped: $target_pid"
+    else
+        print_status "Process $target_pid is not running (already finished)"
+        if [[ -f "$PID_DIR/${target_pid}.info" ]]; then
+            sed -i 's/STATUS=running/STATUS=finished/' "$PID_DIR/${target_pid}.info"
+        fi
+    fi
+}
+
+# Function to follow logs in real-time
+follow_deployment_logs() {
+    local log_file="$1"
+    local pid="$2"
+    
+    print_header "Following deployment logs (PID: $pid)"
+    print_status "Log file: $log_file"
+    print_status "Press Ctrl+C to stop following (deployment will continue in background)"
+    echo ""
+    
+    # Wait for log file to be created
+    local wait_count=0
+    while [[ ! -f "$log_file" ]] && [[ $wait_count -lt 30 ]]; do
+        sleep 1
+        ((wait_count++))
+    done
+    
+    if [[ -f "$log_file" ]]; then
+        tail -f "$log_file" &
+        local tail_pid=$!
+        
+        # Monitor the deployment process
+        while kill -0 "$pid" 2>/dev/null; do
+            sleep 2
+        done
+        
+        # Kill the tail process when deployment finishes
+        kill "$tail_pid" 2>/dev/null
+        
+        print_header "Deployment finished (PID: $pid)"
+        print_status "Final log available at: $log_file"
+    else
+        print_error "Log file not found: $log_file"
+    fi
+}
+
+# Function to cleanup old PID files
+cleanup_old_pids() {
+    if [[ -d "$PID_DIR" ]]; then
+        for pid_file in "$PID_DIR"/*.info; do
+            if [[ -f "$pid_file" ]]; then
+                local pid=$(basename "$pid_file" .info)
+                if ! kill -0 "$pid" 2>/dev/null; then
+                    # Process is dead, mark as finished
+                    sed -i 's/STATUS=running/STATUS=finished/' "$pid_file" 2>/dev/null
+                fi
+            fi
+        done
+    fi
+}
+
+# Function to check for deployment conflicts
+check_deployment_conflicts() {
+    local current_lab_id="$1"
+    local current_phase="$2"
+    
+    if [[ ! -d "$PID_DIR" ]]; then
+        return 0  # No PIDs directory, no conflicts
+    fi
+    
+    local conflicting_deployments=()
+    
+    for pid_file in "$PID_DIR"/*.info; do
+        if [[ -f "$pid_file" ]]; then
+            source "$pid_file"
+            local pid=$(basename "$pid_file" .info)
+            
+            # Check if process is still running
+            if kill -0 "$pid" 2>/dev/null; then
+                # Check for conflicts
+                if [[ "$LAB_ID" == "$current_lab_id" ]]; then
+                    # Same lab - check for phase conflicts
+                    case "$current_phase" in
+                        "full")
+                            # Full deployment conflicts with any other deployment
+                            conflicting_deployments+=("PID $pid: $LAB_ID ($PHASE)")
+                            ;;
+                        *)
+                            # Specific phase conflicts with full deployment or same phase
+                            if [[ "$PHASE" == "full" || "$PHASE" == "$current_phase" ]]; then
+                                conflicting_deployments+=("PID $pid: $LAB_ID ($PHASE)")
+                            fi
+                            ;;
+                    esac
+                fi
+            fi
+        fi
+    done
+    
+    if [[ ${#conflicting_deployments[@]} -gt 0 ]]; then
+        print_warning "⚠️  Potential deployment conflicts detected:"
+        for conflict in "${conflicting_deployments[@]}"; do
+            print_warning "   $conflict"
+        done
+        echo ""
+        print_warning "Running multiple deployments on the same lab simultaneously may cause:"
+        print_warning "• Resource conflicts in OpenShift"
+        print_warning "• File system conflicts on bastion"
+        print_warning "• Inconsistent deployment state"
+        echo ""
+        
+        if [[ "$BACKGROUND_MODE" == "true" ]]; then
+            read -p "Continue anyway? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_status "Deployment cancelled by user"
+                exit 0
+            fi
+        else
+            print_status "Consider using --status to check running deployments"
+            print_status "Use --stop PID to stop conflicting deployments if needed"
+        fi
+    fi
+}
+
 # Function to show usage
 show_usage() {
     echo "Usage: $0 [OPTIONS] [PHASE]"
@@ -120,6 +337,10 @@ show_usage() {
     echo "  -c, --check-inventory   Check inventory configuration"
     echo "  -d, --dry-run          Run in check mode (no changes)"
     echo "  -v, --verbose          Enable verbose output"
+    echo "  -b, --background       Run deployment in background"
+    echo "  --follow-logs          Follow deployment logs in real-time (implies --background)"
+    echo "  --status               Show status of background deployments"
+    echo "  --stop PID             Stop a background deployment by PID"
     echo "  --credentials FILE     Use external credentials file (YAML format)"
     echo "  --inventory FILE       Use custom inventory file (default: inventory/hosts.yml)"
     echo ""
@@ -141,6 +362,10 @@ show_usage() {
     echo "  $0 -c                                 # Check inventory configuration"
     echo "  $0 -d control-plane                   # Dry run of control plane deployment"
     echo "  $0 -v prerequisites                   # Verbose prerequisites installation"
+    echo "  $0 -b full                            # Run full deployment in background"
+    echo "  $0 --follow-logs install-operators    # Run and follow logs in real-time"
+    echo "  $0 --status                           # Show status of background deployments"
+    echo "  $0 --stop 12345                       # Stop background deployment with PID 12345"
     echo "  $0 --credentials ../my_credentials.yml full  # Use external credentials file"
     echo "  $0 --inventory ../lab1/hosts.yml full      # Use custom inventory file"
     echo ""
@@ -234,10 +459,10 @@ check_inventory() {
         echo "  - bastion_port: Your SSH port (e.g., 31295)"
         echo "  - bastion_password: Your bastion password"
         if [[ -z "${CRED_REGISTRY_USERNAME:-}" ]]; then
-            echo "  - registry_username: Red Hat registry service account username"
-            echo "  - registry_password: Red Hat registry service account password/token"
-            echo "  - rhc_username: Red Hat Customer Portal username"
-            echo "  - rhc_password: Red Hat Customer Portal password"
+        echo "  - registry_username: Red Hat registry service account username"
+        echo "  - registry_password: Red Hat registry service account password/token"
+        echo "  - rhc_username: Red Hat Customer Portal username"
+        echo "  - rhc_password: Red Hat Customer Portal password"
             echo ""
             echo "Alternatively, use --credentials FILE to provide credentials externally."
         fi
@@ -412,49 +637,49 @@ run_deployment() {
         case '$phase' in
             'prerequisites')
                 echo 'Running prerequisites phase...'
-                ansible-playbook site.yml --tags prerequisites $ansible_opts
-                ;;
+            ansible-playbook site.yml --tags prerequisites $ansible_opts
+            ;;
             'install-operators')
                 echo 'Installing OpenStack operators...'
-                ansible-playbook site.yml --tags install-operators $ansible_opts
-                ;;
+            ansible-playbook site.yml --tags install-operators $ansible_opts
+            ;;
             'security')
                 echo 'Configuring security...'
-                ansible-playbook site.yml --tags security $ansible_opts
-                ;;
+            ansible-playbook site.yml --tags security $ansible_opts
+            ;;
             'nfs-server')
                 echo 'Configuring NFS server...'
-                ansible-playbook site.yml --tags nfs-server $ansible_opts
-                ;;
+            ansible-playbook site.yml --tags nfs-server $ansible_opts
+            ;;
             'network-isolation')
                 echo 'Setting up network isolation...'
-                ansible-playbook site.yml --tags network-isolation $ansible_opts
-                ;;
+            ansible-playbook site.yml --tags network-isolation $ansible_opts
+            ;;
             'control-plane')
                 echo 'Deploying control plane...'
-                ansible-playbook site.yml --tags control-plane $ansible_opts
-                ;;
+            ansible-playbook site.yml --tags control-plane $ansible_opts
+            ;;
             'data-plane')
                 echo 'Configuring data plane...'
-                ansible-playbook site.yml --tags data-plane $ansible_opts
-                ;;
+            ansible-playbook site.yml --tags data-plane $ansible_opts
+            ;;
             'validation')
                 echo 'Running validation...'
-                ansible-playbook site.yml --tags validation $ansible_opts
-                ;;
+            ansible-playbook site.yml --tags validation $ansible_opts
+            ;;
             'full')
                 echo 'Running complete deployment...'
-                ansible-playbook site.yml $ansible_opts
-                ;;
+            ansible-playbook site.yml $ansible_opts
+            ;;
             'optional')
                 echo 'Enabling optional services (Heat, Swift)...'
-                ansible-playbook optional-services.yml $ansible_opts
-                ;;
-            *)
+            ansible-playbook optional-services.yml $ansible_opts
+            ;;
+        *)
                 echo 'Unknown phase: $phase'
-                exit 1
-                ;;
-        esac
+            exit 1
+            ;;
+    esac
     "
     
     # Execute deployment on bastion
@@ -475,6 +700,8 @@ main() {
     local credentials_file=""
     local inventory_file="inventory/hosts.yml"
     local lab_id="default"
+    local show_status="false"
+    local stop_pid=""
     
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -494,6 +721,29 @@ main() {
             -v|--verbose)
                 verbose="true"
                 shift
+                ;;
+            -b|--background)
+                BACKGROUND_MODE=true
+                shift
+                ;;
+            --follow-logs)
+                FOLLOW_LOGS=true
+                BACKGROUND_MODE=true
+                shift
+                ;;
+            --status)
+                show_status="true"
+                shift
+                ;;
+            --stop)
+                if [[ -n "${2:-}" ]]; then
+                    stop_pid="$2"
+                    shift 2
+                else
+                    print_error "--stop requires a PID"
+                    show_usage
+                    exit 1
+                fi
                 ;;
             --credentials)
                 if [[ -n "${2:-}" ]]; then
@@ -533,6 +783,22 @@ main() {
         [[ "$lab_id" == "changeme" || -z "$lab_id" ]] && lab_id="default"
     fi
     
+    # Handle special commands first
+    cleanup_old_pids
+    
+    if [[ "$show_status" == "true" ]]; then
+        show_background_status
+        exit 0
+    fi
+    
+    if [[ -n "$stop_pid" ]]; then
+        stop_background_deployment "$stop_pid"
+        exit $?
+    fi
+    
+    # Check for conflicting deployments
+    check_deployment_conflicts "$lab_id" "$phase"
+    
     # Initialize logging
     init_logging "$lab_id" "$@"
     
@@ -540,6 +806,10 @@ main() {
     print_status "Timestamp: $(date)"
     print_status "Working directory: $(pwd)"
     print_status "Lab ID: $lab_id"
+    
+    if [[ "$BACKGROUND_MODE" == "true" ]]; then
+        print_status "Background mode: enabled"
+    fi
     
     # Parse credentials file if provided
     if [[ -n "$credentials_file" ]]; then
@@ -573,21 +843,46 @@ main() {
         exit $exit_code
     fi
     
-    run_deployment "$phase" "$dry_run" "$verbose" "$inventory_file"
-    exit_code=$?
-    
-    if [[ $exit_code -eq 0 ]]; then
-        if [[ "$dry_run" == "true" ]]; then
-            print_status "Dry run completed successfully!"
-            print_status "Run without -d/--dry-run to perform actual deployment."
+    # Handle background deployment
+    if [[ "$BACKGROUND_MODE" == "true" ]]; then
+        # Run deployment in background
+        (
+            run_deployment "$phase" "$dry_run" "$verbose" "$inventory_file"
+            local bg_exit_code=$?
+            finalize_log "$bg_exit_code" "$phase"
+            exit $bg_exit_code
+        ) &
+        
+        local bg_pid=$!
+        save_background_process "$bg_pid" "$lab_id" "$phase" "$LOG_FILE" "$DEPLOYMENT_START_TIME"
+        
+        if [[ "$FOLLOW_LOGS" == "true" ]]; then
+            follow_deployment_logs "$LOG_FILE" "$bg_pid"
         else
-            print_status "Deployment phase '$phase' completed successfully!"
-            print_status "Check the README.md for verification commands and troubleshooting."
+            print_status "Deployment running in background with PID: $bg_pid"
+            print_status "Use '$0 --status' to check progress"
+            print_status "Use 'tail -f $LOG_FILE' to follow logs"
         fi
+        
+        exit 0
+    else
+        # Run deployment in foreground (original behavior)
+        run_deployment "$phase" "$dry_run" "$verbose" "$inventory_file"
+        exit_code=$?
+        
+        if [[ $exit_code -eq 0 ]]; then
+            if [[ "$dry_run" == "true" ]]; then
+                print_status "Dry run completed successfully!"
+                print_status "Run without -d/--dry-run to perform actual deployment."
+            else
+                print_status "Deployment phase '$phase' completed successfully!"
+                print_status "Check the README.md for verification commands and troubleshooting."
+            fi
+        fi
+        
+        finalize_log "$exit_code" "$phase"
+        exit $exit_code
     fi
-    
-    finalize_log "$exit_code" "$phase"
-    exit $exit_code
 }
 
 # Run main function with all arguments
