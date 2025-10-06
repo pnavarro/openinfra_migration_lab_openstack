@@ -123,7 +123,7 @@ The URL of your AWX dashboard is:
 awx-vmware-migrations-awx.apps.cluster-{guid}.dynamic.redhatworkshops.io
 ----
 
-Navigate that URL with your browser to continue de lab. (Use admin as username and the password obtained in the previous step)
+Navigate to that URL with your browser to continue the lab. (Use admin as username and the password obtained in the previous step)
 
 == Configuring AWX to Launch a Migration
 
@@ -135,7 +135,7 @@ Navigate that URL with your browser to continue de lab. (Use admin as username a
    * **Credential Type:** Machine
    * **Username:** cloud-user
    * **SSH Private Key:** File content from `/home/lab-user/.ssh/{guid}key.pem` on the bastion
-3. Click Save
+3. Click *Save*
 
 === Creating an Inventory
 
@@ -143,7 +143,7 @@ Navigate that URL with your browser to continue de lab. (Use admin as username a
 2. Click *Add Inventory* and set the following parameters:
    * **Name:** Conversion Host Inventory
    * **Organization:** Default
-3. Click *Save*.
+3. Click *Save*
 
 === Creating Hosts
 
@@ -160,6 +160,8 @@ Navigate that URL with your browser to continue de lab. (Use admin as username a
 ansible_ssh_user: cloud-user
 ----
 
+Click *Save*
+
 1. From the navigation panel, go to *Resources* → *Hosts*.
 2. Click *Add* and set the following parameters:
    * **Name:** conversion_host
@@ -172,7 +174,7 @@ ansible_host: {rhoso_conversion_host_ip}
 ansible_ssh_user: cloud-user
 ----
 
-Click *Save*.
+Click *Save*
 
 ==== Migrator Host
 
@@ -182,7 +184,7 @@ Click *Save*.
    * **Inventory:** Conversion Host Inventory
    * **Variables:**
 
-Click *Save*.
+Click *Save*
 
 [source,bash,role=execute]
 ----
@@ -190,7 +192,7 @@ ansible_connection: local
 ansible_python_interpreter: '{{ ansible_playbook_python }}'
 ----
 
-Click *Save*.
+Click *Save*
 
 === Creating an Execution Environment
 
@@ -198,7 +200,7 @@ Click *Save*.
 2. Click *Create Execution Environment* and set the following parameters:
    * **Name:** vmware migration kit execution environment
    * **Image:** `quay.io/os-migrate/vmware-migration-kit:stable`
-3. Click *Create Execution Environment*.
+3. Click *Save*
 
 === Creating a Project
 
@@ -208,7 +210,7 @@ Click *Save*.
    * **Execution Environment:** vmware migration kit execution environment
    * **Source Control Type:** Git
    * **Source Control URL:** `https://github.com/os-migrate/vmware-migration-kit`
-3. Click *Create Project*.
+3. Click *Save*
 
 === Creating the Job Template
 
@@ -297,7 +299,7 @@ Go back to the AWX dashboard.
    * **Execution Environment:** vmware migration kit execution environment
    * **Credentials:** Bastion key
    * **Extra Variables:** Copy the content of `/home/lab-user/os-migrate-env/os_migrate_for_awx.yaml` from the bastion
-3. Click *Save*.
+3. Click *Save*
 
 === Running the Migration
 

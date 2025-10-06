@@ -29,7 +29,7 @@ To transfer virtual machine data efficiently, the migration process utilizes a s
 
 In the bastion:
 
-Download the latest Centos 10 qcow2 that it will be used to deploy the conversion host:
+Download the latest Centos Stream 10 qcow2 that it will be used to deploy the conversion host:
 
 [source,bash,role=execute]
 ----
@@ -42,7 +42,7 @@ Copy the bastion public key to the openstackclient pod:
 oc cp /home/lab-user/.ssh/{guid}key.pub openstack/openstackclient:/home/cloud-admin/.
 ----
 
-Copy the Centos 10 qcow image to the openstackclient pod:
+Copy the Centos Stream 10 qcow image to the openstackclient pod:
 [source,bash,role=execute]
 ----
 oc cp /home/lab-user/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2 openstack/openstackclient:/home/cloud-admin/.
