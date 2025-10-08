@@ -3,7 +3,7 @@
 # Lab Inventory Generator Script
 # This script parses the lab configuration file and generates individual hosts-{guid}.yml files
 
-set -uo pipefail
+set -e
 
 # Color codes for output
 RED='\033[0;31m'
@@ -254,7 +254,7 @@ generate_inventory_file() {
     # Check if file exists and force is not set
     if [[ -f "$output_file" && "$force" != "true" ]]; then
         print_warning "File $output_file already exists. Use --force to overwrite."
-        return 1
+        return 2  # Use exit code 2 to distinguish from other errors
     fi
     
     if [[ "$dry_run" == "true" ]]; then
@@ -428,21 +428,36 @@ main() {
     local success_count=0
     local skip_count=0
     
+    print_info "DEBUG: Looking for config files in: $temp_dir/lab_configs/"
+    print_info "DEBUG: Config files found: $(ls -1 "$temp_dir"/lab_configs/lab_*.conf 2>/dev/null | wc -l)"
+    
     for config_file in "$temp_dir"/lab_configs/lab_*.conf; do
         if [[ -f "$config_file" ]]; then
+            print_info "DEBUG: Processing config file: $config_file"
             # Temporarily disable exit on error for this function call
             set +e
             generate_inventory_file "$config_file" "$output_dir" "$dry_run" "$force"
             local exit_code=$?
             set -e
             
+            print_info "DEBUG: generate_inventory_file returned exit code: $exit_code"
+            
             if [[ $exit_code -eq 0 ]]; then
                 ((success_count++))
+                print_info "DEBUG: Success count incremented to: $success_count"
+            elif [[ $exit_code -eq 2 ]]; then
+                ((skip_count++))
+                print_info "DEBUG: Skip count incremented to: $skip_count (file already exists)"
             else
                 ((skip_count++))
+                print_error "DEBUG: Error processing $config_file (exit code: $exit_code)"
             fi
+        else
+            print_info "DEBUG: Config file not found or not readable: $config_file"
         fi
     done
+    
+    print_info "DEBUG: Final counts - Success: $success_count, Skip: $skip_count"
     
     # Summary
     print_status "Generation Summary"

@@ -129,7 +129,7 @@ PID=$pid
 LAB_ID=$lab_id
 PHASE=$phase
 LOG_FILE=$log_file
-START_TIME=$start_time
+START_TIME="$start_time"
 STATUS=running
 EOF
     
@@ -353,6 +353,7 @@ show_usage() {
     echo "  control-plane - Deploy OpenStack control plane"
     echo "  data-plane    - Configure compute nodes"
     echo "  validation    - Verify deployment"
+    echo "  showroom      - Configure Showroom (optional)"
     echo "  full          - Run complete deployment (default)"
     echo "  optional      - Enable optional services (Heat, Swift)"
     echo ""
@@ -362,6 +363,7 @@ show_usage() {
     echo "  $0 -c                                 # Check inventory configuration"
     echo "  $0 -d control-plane                   # Dry run of control plane deployment"
     echo "  $0 -v prerequisites                   # Verbose prerequisites installation"
+    echo "  $0 showroom                           # Configure Showroom only"
     echo "  $0 -b full                            # Run full deployment in background"
     echo "  $0 --follow-logs install-operators    # Run and follow logs in real-time"
     echo "  $0 --status                           # Show status of background deployments"
@@ -666,6 +668,10 @@ run_deployment() {
             'validation')
                 echo 'Running validation...'
             ansible-playbook site.yml --tags validation $ansible_opts
+            ;;
+            'showroom')
+                echo 'Configuring Showroom...'
+            ansible-playbook site.yml --tags showroom $ansible_opts
             ;;
             'full')
                 echo 'Running complete deployment...'

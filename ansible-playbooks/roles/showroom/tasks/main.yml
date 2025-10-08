@@ -1,0 +1,94 @@
+---
+# Showroom Configuration role
+# This role configures the Showroom deployment to use a custom Git repository
+# It's an optional role that runs after validation
+
+- name: Check if showroom namespace exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: showroom
+  register: showroom_namespace_check
+  ignore_errors: true
+
+- name: Display showroom namespace status
+  debug:
+    msg: "Showroom namespace exists: {{ showroom_namespace_check.resources | length > 0 }}"
+
+- name: Check if showroom deployment exists
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: showroom
+    namespace: showroom
+  register: showroom_deployment_check
+  ignore_errors: true
+  when: showroom_namespace_check.resources | length > 0
+
+- name: Display showroom deployment status
+  debug:
+    msg: "Showroom deployment exists: {{ showroom_deployment_check.resources | length > 0 }}"
+  when: showroom_namespace_check.resources | length > 0
+
+- name: Configure showroom Git repository URL using oc command
+  shell: |
+    oc set env deployment/showroom -n showroom GIT_REPO_URL="{{ showroom_git_repo_url }}"
+  register: showroom_oc_result
+  when: 
+    - showroom_namespace_check.resources | length > 0
+    - showroom_deployment_check.resources | length > 0
+  changed_when: true
+
+- name: Verify showroom configuration
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: showroom
+    namespace: showroom
+  register: showroom_verification
+  when: 
+    - showroom_namespace_check.resources | length > 0
+    - showroom_deployment_check.resources | length > 0
+
+- name: Display showroom environment variables
+  debug:
+    msg: "Showroom GIT_REPO_URL configured: {{ showroom_git_repo_url }}"
+  when: 
+    - showroom_namespace_check.resources | length > 0
+    - showroom_deployment_check.resources | length > 0
+    - showroom_oc_result is succeeded
+
+- name: Wait for showroom deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: showroom
+    namespace: showroom
+    wait: true
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: 300
+  when: 
+    - showroom_namespace_check.resources | length > 0
+    - showroom_deployment_check.resources | length > 0
+    - showroom_oc_result is succeeded
+  ignore_errors: true
+
+- name: Display showroom configuration summary
+  debug:
+    msg:
+      - "Showroom configuration completed"
+      - "Git Repository URL: {{ showroom_git_repo_url }}"
+      - "Namespace: showroom"
+      - "Deployment: showroom"
+  when: 
+    - showroom_namespace_check.resources | length > 0
+    - showroom_deployment_check.resources | length > 0
+
+- name: Warning when showroom is not available
+  debug:
+    msg: "WARNING: Showroom namespace or deployment not found. Skipping showroom configuration."
+  when: 
+    - showroom_namespace_check.resources | length == 0 or 
+      (showroom_namespace_check.resources | length > 0 and showroom_deployment_check.resources | length == 0)

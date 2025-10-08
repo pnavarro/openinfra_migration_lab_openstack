@@ -112,6 +112,9 @@ redhat_registry_password: "{{ registry_password | default('') }}"
 subscription_manager_username: "{{ rhc_username | default('') }}"
 subscription_manager_password: "{{ rhc_password | default('') }}"
 
+# Showroom Configuration (optional)
+showroom_git_repo_url: "https://github.com/pnavarro/openinfra_migration_lab_openstack"
+
 # Timeout settings
 operator_wait_timeout: 600
 deployment_wait_timeout: 1800
