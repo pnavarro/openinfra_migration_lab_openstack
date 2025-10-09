@@ -141,22 +141,14 @@ parse_lab_config() {
             continue
         fi
 
-        # Parse admin password
+        # Skip admin password and console URL extraction as they're not used in playbooks
         if [[ "$line" =~ User\ admin\ with\ password\ ([^[:space:]]+)\ is\ cluster\ admin ]]; then
-            local admin_password="${BASH_REMATCH[1]}"
-            if [[ -n "$lab_config_file" && "$current_lab" != "prod" ]]; then
-                echo "  [\"ocp_admin_password\"]=\"$admin_password\"" >> "$lab_config_file"
-                print_info "  Admin Password: ***" >&2
-            fi
+            print_info "  Admin Password: *** (not used in playbooks)" >&2
             continue
         fi
 
-        # Parse OpenShift console URL
         if [[ "$line" =~ OpenShift\ Console:\ (https://[^[:space:]]+) ]]; then
-            local console_url="${BASH_REMATCH[1]}"
-            if [[ -n "$lab_config_file" && "$current_lab" != "prod" ]]; then
-                echo "  [\"ocp_console_url\"]=\"$console_url\"" >> "$lab_config_file"
-            fi
+            print_info "  Console URL: ${BASH_REMATCH[1]} (not used in playbooks)" >&2
             continue
         fi
 
@@ -224,8 +216,6 @@ generate_inventory_file() {
     if [[ -z "$guid" ]]; then
         guid="$lab_id"
     fi
-    local ocp_console_url=$(grep '\["ocp_console_url"\]' "$lab_config_file" | head -1 | sed 's/.*="\([^"]*\)".*/\1/')
-    local ocp_admin_password=$(grep '\["ocp_admin_password"\]' "$lab_config_file" | head -1 | sed 's/.*="\([^"]*\)".*/\1/')
     # Try to extract external IPs from the parsed config, with correct field names (take first match only)
     local rhoso_external_ip_worker_1=$(grep '\["rhoso_external_ip_worker_1"\]' "$lab_config_file" | head -1 | sed 's/.*="\([^"]*\)".*/\1/')
     local rhoso_external_ip_worker_2=$(grep '\["rhoso_external_ip_worker_2"\]' "$lab_config_file" | head -1 | sed 's/.*="\([^"]*\)".*/\1/')
@@ -241,8 +231,6 @@ generate_inventory_file() {
     # Use defaults if values are empty
     [[ -z "$guid" ]] && guid="$lab_id"
     [[ -z "$bastion_user" ]] && bastion_user="lab-user"
-    [[ -z "$ocp_console_url" ]] && ocp_console_url="https://console.example.com"
-    [[ -z "$ocp_admin_password" ]] && ocp_admin_password="changeme"
     [[ -z "$rhoso_external_ip_worker_1" ]] && rhoso_external_ip_worker_1="172.21.0.21"
     [[ -z "$rhoso_external_ip_worker_2" ]] && rhoso_external_ip_worker_2="172.21.0.22"
     [[ -z "$rhoso_external_ip_worker_3" ]] && rhoso_external_ip_worker_3="172.21.0.23"
@@ -282,10 +270,6 @@ all:
     bastion_hostname: "$bastion_hostname"
     bastion_port: "$bastion_port"
     bastion_password: "$bastion_password"
-    
-    # OpenShift Console URL and credentials  
-    ocp_console_url: "$ocp_console_url"
-    ocp_admin_password: "$ocp_admin_password"
     
     # Red Hat Registry credentials (required)
     registry_username: ""  # Add your Red Hat registry service account username

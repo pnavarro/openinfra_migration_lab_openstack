@@ -1,42 +1,35 @@
 ---
-# Example inventory configuration for RHOSO deployment via SSH jump host
-# Copy this to hosts.yml and update with your actual values
+# Ansible inventory for RHOSO deployment via SSH jump host (bastion)
+# This inventory is designed to run all tasks on the bastion host
 
 all:
   vars:
-    # REQUIRED: Lab Environment Configuration
-    lab_guid: "a1b2c"                                 # Replace with your actual lab GUID
-    bastion_user: "lab-user"                          # Usually 'lab-user'
-    bastion_hostname: "ssh.ocpvdev01.rhdp.net"       # Replace with your bastion hostname
-    bastion_port: "31295"                            # Replace with your SSH port
-    bastion_password: "YourBastionPassword123"        # Replace with your actual password
+    # Lab-specific variables - MUST be updated for your environment
+    lab_guid: "changeme"  # Replace with your lab GUID
+    bastion_user: "lab-user"
+    bastion_hostname: "ssh.ocpvdev01.rhdp.net"  # Replace with your bastion hostname
+    bastion_port: "31295"  # Replace with your bastion SSH port
+    bastion_password: "changeme"  # Replace with your bastion password
     
-    # REQUIRED: OpenShift Console (if you have access)
-    ocp_console_url: "https://console-openshift-console.apps.cluster-xyz.xyz.example.opentlc.com"
-    ocp_admin_password: "YourOCPAdminPassword"
+    # Red Hat Registry credentials (required)
+    registry_username: ""  # Add your Red Hat registry service account username
+    registry_password: ""  # Add your Red Hat registry service account password/token
     
-    # REQUIRED: Red Hat Registry Service Account Credentials
-    # Get these from: https://access.redhat.com/articles/RegistryAuthentication#creating-registry-service-accounts-6
-    registry_username: "12345678|myserviceaccount"    # Your registry service account
-    registry_password: "eyJhbGciOiJSUzUxMiJ9..."      # Your registry token
+    # Subscription Manager credentials (required)
+    rhc_username: ""  # Add your Red Hat Customer Portal username
+    rhc_password: ""  # Add your Red Hat Customer Portal password
     
-    # REQUIRED: Red Hat Customer Portal Credentials  
-    # Your login credentials for https://access.redhat.com
-    rhc_username: "your-rh-username@email.com"       # Your RH Customer Portal username
-    rhc_password: "YourRHPassword123"                 # Your RH Customer Portal password
+    # Internal lab hostnames (accessed from bastion)
+    nfs_server_hostname: "nfsserver"  # Internal hostname for NFS server
+    compute_hostname: "compute01"     # Internal hostname for compute node
     
-    # OPTIONAL: Internal lab hostnames (usually defaults work)
-    nfs_server_hostname: "nfsserver"                  # Internal NFS server hostname
-    compute_hostname: "compute01"                     # Internal compute node hostname
+    # External IP configuration for OpenShift worker nodes
+    rhoso_external_ip_worker_1: "172.21.0.21"  # External IP for worker node 1
+    rhoso_external_ip_worker_2: "172.21.0.22"  # External IP for worker node 2  
+    rhoso_external_ip_worker_3: "172.21.0.23"  # External IP for worker node 3
     
-    # OPTIONAL: External IP configuration for OpenShift worker nodes
-    # These IPs are used to configure the external network interfaces on OCP worker nodes
-    rhoso_external_ip_worker_1: "172.21.0.21"        # External IP for worker node 1
-    rhoso_external_ip_worker_2: "172.21.0.22"        # External IP for worker node 2
-    rhoso_external_ip_worker_3: "172.21.0.23"        # External IP for worker node 3
-    
-    # OPTIONAL: Network configuration (usually defaults work)
-    rhoso_external_ip_bastion: "172.21.0.50"         # External IP for bastion
+    # Bastion external IP for final network configuration
+    rhoso_external_ip_bastion: "172.21.0.50"  # Update if different
 
 # All operations run on the bastion host
 bastion:
@@ -46,21 +39,26 @@ bastion:
       ansible_user: "{{ bastion_user }}"
       ansible_port: "{{ bastion_port }}"
       ansible_ssh_pass: "{{ bastion_password }}"
+      ansible_python_interpreter: /usr/bin/python3.11
+      # Uncomment if using SSH key authentication instead of password
+      # ansible_ssh_private_key_file: "path/to/your/ssh/key"
 
-# NFS server operations delegated from bastion
+# NFS server operations via SSH jump host (bastion)
 nfsserver:
   hosts:
     nfs-server:
       ansible_host: "{{ nfs_server_hostname }}"
       ansible_user: "cloud-user"
       ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
-      delegate_to: bastion-jumphost
+      # SSH through bastion host
+      ansible_ssh_common_args: '-o ProxyCommand="sshpass -p {{ bastion_password }} ssh -W %h:%p -p {{ bastion_port }} {{ bastion_user }}@{{ bastion_hostname }}"'
 
-# Compute node operations delegated from bastion  
+# Compute node operations via SSH jump host (bastion)
 compute_nodes:
   hosts:
     compute01:
       ansible_host: "{{ compute_hostname }}"
       ansible_user: "cloud-user"
       ansible_ssh_private_key_file: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
-      delegate_to: bastion-jumphost
+      # SSH through bastion host
+      ansible_ssh_common_args: '-o ProxyCommand="sshpass -p {{ bastion_password }} ssh -W %h:%p -p {{ bastion_port }} {{ bastion_user }}@{{ bastion_hostname }}"'

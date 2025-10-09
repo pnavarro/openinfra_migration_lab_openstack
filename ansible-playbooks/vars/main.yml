@@ -9,9 +9,6 @@ bastion_public_hostname: "{{ bastion_hostname | default('bastion.example.com') }
 bastion_ssh_port: "{{ bastion_port | default('22') }}"
 bastion_ssh_password: "{{ bastion_password | default('changeme') }}"
 
-# OpenShift Configuration  
-openshift_cluster_console_url: "{{ ocp_console_url | default('https://console.example.com') }}"
-openshift_cluster_admin_password: "{{ ocp_admin_password | default('changeme') }}"
 
 # NFS Server Configuration
 nfs_server_ip: "172.18.0.13"

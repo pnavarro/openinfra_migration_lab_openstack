@@ -72,10 +72,6 @@ registry_password: "your-registry-token"
 rhc_username: "your-rh-username"
 rhc_password: "your-rh-password"
 
-# REQUIRED: OpenShift Console URL and admin password
-ocp_console_url: "https://console-openshift-console.apps.cluster-xyz.example.com"
-ocp_admin_password: "your-ocp-admin-password"
-
 # OPTIONAL: Internal hostnames (usually defaults work)
 nfs_server_hostname: "nfsserver"              # Internal hostname for NFS server
 compute_hostname: "compute01"                 # Internal hostname for compute node
