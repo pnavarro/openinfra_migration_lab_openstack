@@ -337,6 +337,7 @@ show_usage() {
     echo "  -c, --check-inventory   Check inventory configuration"
     echo "  -d, --dry-run          Run in check mode (no changes)"
     echo "  -v, --verbose          Enable verbose output"
+    echo "  --debug-credentials    Debug credential loading and injection"
     echo "  -b, --background       Run deployment in background"
     echo "  --follow-logs          Follow deployment logs in real-time (implies --background)"
     echo "  --status               Show status of background deployments"
@@ -628,19 +629,53 @@ run_deployment() {
     if [[ -n "${CRED_REGISTRY_USERNAME:-}" ]]; then
         print_status "Injecting credentials from file into inventory..."
         
-        # Update registry credentials
-        sed -i "s/registry_username: \"\"/registry_username: \"$CRED_REGISTRY_USERNAME\"/" "$temp_inventory"
-        sed -i "s/registry_password: \"\"/registry_password: \"$CRED_REGISTRY_PASSWORD\"/" "$temp_inventory"
+        # Update registry credentials (handle various formats)
+        sed -i "s/registry_username: *[\"']*[^\"']*[\"']*/registry_username: \"$CRED_REGISTRY_USERNAME\"/" "$temp_inventory"
+        sed -i "s/registry_password: *[\"']*[^\"']*[\"']*/registry_password: \"$CRED_REGISTRY_PASSWORD\"/" "$temp_inventory"
         
-        # Update RHC credentials  
-        sed -i "s/rhc_username: \"\"/rhc_username: \"$CRED_RHC_USERNAME\"/" "$temp_inventory"
-        sed -i "s/rhc_password: \"\"/rhc_password: \"$CRED_RHC_PASSWORD\"/" "$temp_inventory"
+        # Update RHC credentials (handle various formats)
+        sed -i "s/rhc_username: *[\"']*[^\"']*[\"']*/rhc_username: \"$CRED_RHC_USERNAME\"/" "$temp_inventory"
+        sed -i "s/rhc_password: *[\"']*[^\"']*[\"']*/rhc_password: \"$CRED_RHC_PASSWORD\"/" "$temp_inventory"
         
         print_status "Credentials injected into temporary inventory"
+        
+        # Debug: Show what credentials were injected (without showing actual passwords)
+        print_status "Registry username: ${CRED_REGISTRY_USERNAME%%|*}|***"
+        print_status "RHC username: $CRED_RHC_USERNAME"
+        
+        # Verify injection worked
+        if grep -q "registry_username: \"$CRED_REGISTRY_USERNAME\"" "$temp_inventory"; then
+            print_status "✓ Registry username injection verified"
+        else
+            print_warning "⚠ Registry username injection may have failed"
+        fi
     fi
     
     inventory_file="$temp_inventory"
     print_status "Using temporary inventory: $inventory_file"
+    
+    # Debug: Check if credentials are properly set in the inventory for troubleshooting
+    if [[ "$verbose" == "true" ]]; then
+        print_status "=== Credential Debug Information ==="
+        if grep -q "registry_username:" "$inventory_file"; then
+            local reg_user=$(grep "registry_username:" "$inventory_file" | sed 's/.*registry_username: *["\x27]\?\([^"\x27]*\)["\x27]\?.*/\1/')
+            if [[ -n "$reg_user" && "$reg_user" != "" ]]; then
+                print_status "✓ Registry username is set: ${reg_user%%|*}|***"
+            else
+                print_warning "⚠ Registry username is empty or not set"
+            fi
+        fi
+        
+        if grep -q "registry_password:" "$inventory_file"; then
+            local reg_pass=$(grep "registry_password:" "$inventory_file" | sed 's/.*registry_password: *["\x27]\?\([^"\x27]*\)["\x27]\?.*/\1/')
+            if [[ -n "$reg_pass" && "$reg_pass" != "" ]]; then
+                print_status "✓ Registry password is set (length: ${#reg_pass})"
+            else
+                print_warning "⚠ Registry password is empty or not set"
+            fi
+        fi
+        print_status "=== End Credential Debug ==="
+    fi
     
     # Prepare ansible options
     local ansible_opts=""
@@ -742,6 +777,7 @@ main() {
     local lab_id="default"
     local show_status="false"
     local stop_pid=""
+    local debug_credentials="false"
     
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -760,6 +796,11 @@ main() {
                 ;;
             -v|--verbose)
                 verbose="true"
+                shift
+                ;;
+            --debug-credentials)
+                debug_credentials="true"
+                verbose="true"  # Enable verbose mode for credential debugging
                 shift
                 ;;
             -b|--background)
@@ -855,6 +896,22 @@ main() {
     # Parse credentials file if provided
     if [[ -n "$credentials_file" ]]; then
         parse_credentials_file "$credentials_file"
+        
+        # Debug credentials if requested
+        if [[ "$debug_credentials" == "true" ]]; then
+            print_header "=== CREDENTIAL DEBUG MODE ==="
+            print_status "Credentials file: $credentials_file"
+            print_status "File contents (passwords masked):"
+            sed 's/password: *["\x27]\?\([^"\x27]*\)["\x27]\?/password: "***"/' "$credentials_file" | while read line; do
+                print_status "  $line"
+            done
+            print_status "Parsed environment variables:"
+            print_status "  CRED_REGISTRY_USERNAME: ${CRED_REGISTRY_USERNAME%%|*}|***"
+            print_status "  CRED_REGISTRY_PASSWORD: $([ -n "$CRED_REGISTRY_PASSWORD" ] && echo "SET (${#CRED_REGISTRY_PASSWORD} chars)" || echo "EMPTY")"
+            print_status "  CRED_RHC_USERNAME: $CRED_RHC_USERNAME"
+            print_status "  CRED_RHC_PASSWORD: $([ -n "$CRED_RHC_PASSWORD" ] && echo "SET (${#CRED_RHC_PASSWORD} chars)" || echo "EMPTY")"
+            print_header "=== END CREDENTIAL DEBUG ==="
+        fi
     fi
     
     check_prerequisites
